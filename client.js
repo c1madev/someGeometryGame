@@ -8,33 +8,69 @@ window.addEventListener("resize", function(){
     canvas.height = canvas.offsetHeight;
 }, false);
 
+
+
 class tileEdge {
-    constructor(orientation, ){
-        
+    constructor(orientation){
+        this.orientation = orientation
+        this.hasConnect = (Math.random() < 0.5)
+
     }
 }
 
 class SqrTile {
     constructor(){
-        this.graphic = new Path()
+        this.foundation = new Path()
+        this.lines = new Path()
+        this.movable = true
+        this.edges = []
+        for(let x = 0; x < 4; x++){
+            this.edges.push(new tileEdge(x*2))
+        }
+    }
+
+    rotateEdges() {
+
     }
 
     visualize(centerPoint){
-        this.graphic = new Path.Rectangle([centerPoint[0]-tileSideLength/2,centerPoint[1]-tileSideLength/2],[tileSideLength,tileSideLength])
-        this.graphic.strokeColor = "rgb(50,50,150)"
-        this.graphic.strokeWidth = 2
-        this.graphic.fillColor = "rgb(150,150,200)"
+        this.foundation = new Path.Rectangle([centerPoint[0]-tileSideLength/2,centerPoint[1]-tileSideLength/2],[tileSideLength,tileSideLength])
+        this.foundation.strokeColor = "rgb(50,50,150)"
+        this.foundation.strokeWidth = 2
+        this.foundation.fillColor = "rgb(150,150,200)"
 
-        this.graphic.onMouseDrag = (event) => {
-            this.graphic.position.x += event.delta.x;
-            this.graphic.position.y += event.delta.y;
+        for(let x = 0; x < 4; x++) {
+            if(this.edges[x].hasConnect) this.lines.join(new Path([centerPoint , [ (this.foundation.segments[x].point.x+this.foundation.segments[(x+1)%4].point.x)/2 , (this.foundation.segments[x].point.y+this.foundation.segments[(x+1)%4].point.y)/2 ]]))
+            console.log(this.edges[x].hasConnect)
+        }
+        this.lines.strokeColor = "rgb(0,0,0)"
+        this.lines.strokeWidth = 4
+
+        this.initialiseMouseEvents()
+    }
+
+    initialiseMouseEvents(){
+        this.foundation.onMouseDrag = (event) => {
+            if(this.movable){
+                this.foundation.position.x += event.delta.x;
+                this.foundation.position.y += event.delta.y;
+                this.lines.position.x += event.delta.x;
+                this.lines.position.y += event.delta.y;
+            }
+        }
+        this.foundation.onClick = (event) => {
+            if(this.movable && Math.abs(event.delta.x)+Math.abs(event.delta.y) == 0){
+                this.foundation.rotate(45)
+                this.lines.rotate(45)
+            }
         }
     }
 }
 
 class HexTile {
     constructor(){
-        this.graphic = new Path()
+        this.foundation = new Path()
+        this.movable = true
     }
 
     visualize(centerPoint){
@@ -52,24 +88,30 @@ class HexTile {
         corners.push([centerPoint[0]-(h/2),centerPoint[1]+(tileSideLength/2)])
 
         //drawing the shape
-        this.graphic = new Path()
+        this.foundation = new Path()
         corners.forEach(i=>{
-            this.graphic.add(i)
+            this.foundation.add(i)
         })
 
-        this.graphic.strokeColor = "rgb(50,50,150)"
-        this.graphic.strokeWidth = 2
-        this.graphic.fillColor = "rgb(150,150,200)"
+        this.foundation.strokeColor = "rgb(50,50,150)"
+        this.foundation.strokeWidth = 2
+        this.foundation.fillColor = "rgb(150,150,200)"
 
-        // mouse event listener for moving the shape
-        this.graphic.onMouseDrag = (event) => {
-            this.graphic.position.x += event.delta.x;
-            this.graphic.position.y += event.delta.y;
-        }
+        this.initialiseMouseEvents()
     }
 
-    move(centerPoint){
-
+    initialiseMouseEvents(){
+        this.foundation.onMouseDrag = (event) => {
+            if(this.movable){
+                this.foundation.position.x += event.delta.x;
+                this.foundation.position.y += event.delta.y;
+            }
+        }
+        this.foundation.onClick = (event) => {
+            if(this.movable && Math.abs(event.delta.x)+Math.abs(event.delta.y) == 0){
+                this.foundation.rotate(45)
+            }
+        }
     }
 }
 
@@ -140,8 +182,14 @@ start = () => {
     let testHex = new HexTile()
     testHex.visualize([350,250])
 
+    let testHex2 = new HexTile()
+    testHex2.visualize([350,250])
+
     let testSqr = new SqrTile()
     testSqr.visualize([500,500])
+
+    let testSqr2 = new SqrTile()
+    testSqr2.visualize([500,500])
 
     console.debug("loaded")
 }
