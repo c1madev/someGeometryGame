@@ -11,7 +11,7 @@ window.addEventListener("resize", function(){
 
 class tileEdge {
     constructor(orientation){
-        this.orientation = orientation%8
+        this.orientation = orientationCycle[orientation%8]
         this.hasConnect = (Math.random() < 0.5)
     }
 
@@ -113,14 +113,14 @@ class HexTile {
     constructor(){
         this.edges = []
         let connectCount = 0
-        for(let x = 0, oCount = 0; x < 6; x++, oCount++){
-            this.edges.push(new tileEdge(x))
+        for(let x = 0, oCount = 3; x < 6; x++, oCount++){
+            this.edges.push(new tileEdge(oCount))
 
             if(x==5 && connectCount == 1) this.edges[x].hasConnect = true
             else if( x == 5 && connectCount == 0) this.edges[x].hasConnect = false
             if(this.edges[x].hasConnect) connectCount++
 
-            if(x%4 != 2) oCount++
+            if(x == 2) oCount++
         }
 
         //graphics
@@ -182,7 +182,6 @@ class HexTile {
                 let connectionPoint = this.foundation.position //assume the connection point is the center: only used w/ the horizontal edges
 
                 if(this.edges[x].isDiagonal()){
-                    console.log("gothere")
                     // find connection point if the edges are diagonal
                     let c1 = new Point(edgeEnd1.x, edgeEnd2.y)  // looking for the two possible Points
                     let c2 = new Point(edgeEnd2.x, edgeEnd1.y)
@@ -200,9 +199,12 @@ class HexTile {
         lineSegments = lineSegments.slice(0,3)
 
         for(let x = 0; x < lineSegments.length; x++){                                                        // connect the ones with path
-            if(lineSegments[x].segments.length > 1 && lineSegments[(x+1)%3].segments.length > 1 && Math.random() < 1/(lineSegments[x]-1)) {
-                lineSegments[x].add(lineSegments[(x+1)%lineSegments.length].segments[1].point)
-                lineSegments[x].join(lineSegments[(x+1)%lineSegments.length])
+            if(lineSegments[x].segments.length > 1 && lineSegments[(x+1)%3].segments.length > 1 && Math.random()/2 < (1/(lineSegments[x].segments.length-1)**4)+(1/(lineSegments[(x+1)%3].segments.length-1)**4)) {
+                // only consider them, if none of the elements is a placeholder path
+                // connect them, if a random number between 0 and 0.5 is smaller than (1/(length[current]-1)^4)+(1/(length[next]-1)^4). Length can only be 1 or 2. if one of them is 1, the sum is larger than 0.5 as 1/1^4 = 1. If both are 2, the Sum is 1/2^4 + 1/2^4 = 2/16 = 1/8
+                lineSegments[x].add(lineSegments[x].segments[1].point)
+                lineSegments[x].add(lineSegments[(x+1)%3].segments[1].point)
+                if (lineSegments[(x+1)%3].segments.length == 2) lineSegments[(x+1)%3].add(lineSegments[x].segments[1].point)
             }
         }
 
@@ -307,12 +309,12 @@ start = () => {
     let startTile = new OctTile()
     startTile.visualize([view.size.width/2, view.size.height/2])
 
-    for (let x = 0; x < 10; x++) {
+    for (let x = 0; x < 15; x++) {
         let testSqr = new SqrTile()
         testSqr.visualize([view.size.width-350-x*5,view.size.height-200-x*20])
     }
 
-    for (let x = 0; x < 5; x++) {
+    for (let x = 0; x < 15; x++) {
         let testHex = new HexTile()
         testHex.visualize([view.size.width-200-x*5,view.size.height-200-x*20])
     }
