@@ -7,6 +7,9 @@ window.addEventListener("resize", function(){
     canvas.height = canvas.offsetHeight;
 }, false);
 
+document.oncontextmenu = () => {
+    return false;
+}
 
 
 class tileEdge {
