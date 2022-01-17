@@ -234,8 +234,9 @@ class HexTile {
             }
         }
         this.graphic.onClick = (event) => {
+            console.log(event.button) // not in the original paper.js, added it because I needed a right-click identifier
             if(this.movable && Math.abs(event.delta.x)+Math.abs(event.delta.y) == 0){
-                this.graphic.rotate(45)
+                this.graphic.rotate(45*(event.button-1))
                 if(this.rotation != 3){
                     this.frameBot.add(this.frameTop.segments[1])
                     this.frameTop.add(this.frameBot.segments[1])

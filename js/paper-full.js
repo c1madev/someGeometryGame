@@ -13836,6 +13836,7 @@ var MouseEvent = Event.extend({
 		this.point = point;
 		this.target = target;
 		this.delta = delta;
+		this.button = event.button;										// not in the original paperscript, but I needed a right-click handler
 	},
 
 	toString: function() {
