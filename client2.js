@@ -1,4 +1,4 @@
-let tileSideLength = 50                                     // All of the tiles should have the same side length
+let tileSideLength = 100                                     // All of the tiles should have the same side length
 let canvas = document.getElementById("someGeometryGame")
 document.body.style.background = "rgb(101, 104, 121)";
 
@@ -50,9 +50,29 @@ class TileEdge {
         return (this.orientation ==4 || (this.orientation%5)%2 == 1)
     }
 
+    /*rotate(rotateBy) {
+        let functionX = (((rotateBy)%8)+8)%8 // breaking down every Input to be positive and < 8
+        //this.orientation = Math.sign(this._orientation-3.4) * ((Math.abs(rotateBy -3.5) -Math.trunc(rotateBy /4) *4) +3.5)
+
+        //this.orientation = (Math.sign(this._orientation-3.5) * (Math.abs(rotateBy -3.5))) + (Math.trunc(rotateBy /4) *4) +3.5
+
+        //this.orientation = (Math.sign(this._orientation-3.5) * (Math.abs(rotateBy -3.5)-2)) + (Math.trunc(rotateBy /4) *4) +1.5
+
+        //this.orientation = (Math.sign(orientation-3.5) * (Math.abs(rotateBy -3.5+orientation) -2)) + (Math.trunc((rotateBy+orientation)%8 /4) *4) +1.5
+
+        //this.orientation = Math.abs(functionX-Math.floor((functionX/8)+0.5)*8) + Math.floor((functionX%8)/4)*3
+
+        functionX -= Math.abs(this.orientation-Math.floor((this.orientation/8)+0.5)*8) + Math.floor((this.orientation%8)/4)*3 // finding the correct offset for function
+
+        //this.orientation = ((rotateBy-3.5)/Math.abs(rotateBy-3.5))*(Math.abs(rotateBy-Math.floor((rotateBy/8)+0.5)*8)+Math.floor((rotateBy%8)/4)*3)+Math.floor((rotateBy%8)/4)
+
+        this.orientation = Math.abs(functionX-Math.floor((functionX/8)+0.5)*8) + Math.floor((functionX%8)/4)*3
+    }*/
+
     rotate(rotateBy) {
-        rotateBy = ((rotateBy%8)+8)%8 // breaking down every Input to be positive and < 8
-        this.orientation = Math.sign(this._orientation-3.4) * ((Math.abs(rotateBy -3.5) -Math.trunc(rotateBy /4) *4) +3.5)
+        let functionX = (((rotateBy)%8)+8)%8
+		functionX += Math.abs(this._orientation-Math.floor((this._orientation/8)+0.5)*8) + Math.floor((this._orientation%8)/4)*3
+        this._orientation = Math.abs(functionX-Math.floor((functionX/8)+0.5)*8) + Math.floor((functionX%8)/4)*3
     }
 }
 
@@ -64,7 +84,7 @@ class Segment {
     }
     
     getEnds() {
-        return this.ends
+        return this._ends
     }
 }
 
@@ -95,7 +115,19 @@ class Pathway {
 class Tile{
     constructor(edges, pathSegments) {
         this._edges = edges
-        this._pathSegments = pathSegments
+        this._edges.forEach(edge => {
+            edge.parentTile = this
+        })
+
+        this._pathSegments = []
+        for(let x = 0; x < pathSegments.length; x++) {
+            let segmentEnds = []
+            pathSegments[x].forEach(edge => {
+                if(this._edges.indexOf(edge) != -1) segmentEnds.push(edge)
+            })
+            this._pathSegments.push(new Segment(segmentEnds))
+            this._pathSegments[this._pathSegments.length-1].parentTile = this
+        }
         this._mainConnect = null
     }
 
@@ -177,9 +209,8 @@ class Board {
 
 
 // graphics
-class TeamColor extends String {
+class TeamColor {
     constructor(r, g, b) {
-        super(`rgb(${r},${g},${b})`)            // is the path color
         this._r = r
         this._g = g
         this._b = b
@@ -187,6 +218,10 @@ class TeamColor extends String {
 
     getColorValues() {
         return {r:this._r, g:this._g, b:this._b}
+    }
+
+    getPathColor() {
+        return `rgb(${this._r/2},${this._g/2},${this._b/2})`
     }
 
     getBaseColor() {
@@ -214,13 +249,19 @@ class GTile {
 
         this._frame = new Group([this._frameTop, this._frameBot])
         this._frame.fillColor = teamColor.getBaseColor()
-        this._frame.strokeWidth = 2
+        this._frame.strokeWidth = 3
+        this._frame.strokeCap = "round"
 
-        this._pattern = new Group()
-        this._pattern.strokeColor = teamColor
+        this._pattern = new CompoundPath()
+        this._pattern.strokeColor = teamColor.getPathColor()
         this._pattern.strokeWidth = 4
+        this._pattern.strokeCap = "round"
 
-        this._graphics = new Group([this._frame, this._pattern])
+        this._graphics = new Group([this._frame,this._pattern])
+
+        this._rotation = 0
+        this._movable = true
+        this._initialiseMouseEvents()
     }
 
     toBack() {
@@ -230,12 +271,60 @@ class GTile {
     toFront() {
         this._graphics.bringToFront()
     }
+
+    _rotateLeft() {}
+
+    _rotateRight() {}
+
+    _initialiseMouseEvents() {
+        this._graphics.onMouseDrag = (event) => {
+            if(this._movable){
+                this._graphics.position.x += event.delta.x;
+                this._graphics.position.y += event.delta.y;
+            }
+        }
+        this._graphics.onClick = (event) => {
+            if(this._movable && Math.abs(event.delta.x)+Math.abs(event.delta.y) == 0){
+                if(event.button == 0) this._rotateLeft() // event.button is not in the original paper.js, added it because I needed a right-click identifier
+                else if(event.button == 2) this._rotateRight()
+            }
+        }
+    }
 }
 
 class GSqrTile extends GTile {
     constructor(sqrTile, center, color) {
         super(color)
+
+        for(let i = -1; i < 2; i++) {
+            this._frameTop.add([center.x+ (i**i) * (tileSideLength/2), center.y- ((-i)**(-i)) * (tileSideLength/2)])
+            this._frameBot.add([center.x- (i**i) * (tileSideLength/2), center.y+ ((-i)**(-i)) * (tileSideLength/2)])
+        }
+
+        let sqrSegment = new CompoundPath()
+        let frameParts = this._frame.getChildren()
+        sqrTile.getSegments()[0].getEnds().forEach((edge) => {
+            let i = sqrTile.getEdges().indexOf(edge)
+            let edgeCenterX = (i%2 == 1) ? ((frameParts[1-Math.ceil(i/2)%2].getSegments()[0+(i%2)].getPoint().x + (frameParts[1-Math.ceil(i/2)%2].getSegments()[1+(i%2)].getPoint().x))/2) : center.x
+            let edgeCenterY = (i%2 == 0) ? ((frameParts[Math.ceil(i/2)%2].getSegments()[0+(i%2)].getPoint().y + (frameParts[Math.ceil(i/2)%2].getSegments()[1+(i%2)].getPoint().y))/2) : center.y
+            sqrSegment.addChild(new Path([center, new Point(edgeCenterX, edgeCenterY)]))
+        })
+        this._pattern.addChild(sqrSegment)
+        this._pattern.bringToFront()
     }
+
+    _rotateRight() {
+        this._graphics.rotate(45)
+        this._rotation = (this._rotation+1)%2
+        if(this._rotation == 1) this._frame.rotate(-90)
+    }
+
+    _rotateLeft() {
+        this._graphics.rotate(-45)
+        this._rotation = (this._rotation+1)%2
+        if(this._rotation == 0) this._frame.rotate(90)
+    }
+
 
 }
 
@@ -243,15 +332,57 @@ class GHexTile extends GTile {
     constructor(hexTile, center, color) {
         super(color)
 
-
         let tileWidth =  Math.sqrt(2*tileSideLength**2)
-        for(let i = -1; i < 2; i++) {
-            this._frameTop.add([center.x - i*(tileWidth/2), center.y - tileSideLength/2 + (Math.abs(i)-1)*(tileWidth/2)])
-                            //  center.x + offsetRight    , center.y - rectangleBorder  + only if i=0 - tileWidth/2
-            this._frameBot.add([center.x + i*(tileWidth/2), center.y + tileSideLength/2 - (Math.abs(i)-1)*(tileWidth/2)])
+
+        for(let i = -1.5; i < 2; i++) {
+            this._frameTop.add([center.x+(1-Math.trunc(Math.abs(i)))*(tileWidth/2), center.y+ Math.sign(i)*(tileSideLength/2) + Math.trunc(i)*(tileWidth/2)])
+            this._frameBot.add([center.x-(1-Math.trunc(Math.abs(i)))*(tileWidth/2)+1, center.y+ Math.sign(i)*(tileSideLength/2) + Math.trunc(i)*(tileWidth/2)])
         }
-        this._frameTop.add(this._frameBot.segments[0])
-        this._frameBot.add(this._frameTop.segments[0])
+
+        let zoneConnect = new CompoundPath()
+        hexTile.getSegments().forEach((segment) => {
+            let hexSegment = new CompoundPath()
+            let formerCenterConnect = new Point(center.x, center.y+ (tileSideLength/2) * ((segment.getEnds()[0].getOrientation()-1)%3 -1))
+            segment.getEnds().forEach(edge => {
+                let i = hexTile.getEdges().indexOf(edge)
+                let o = edge.getOrientation()
+                let relevantFramePart = this._frame.getChildren()[Math.floor(o/4)].getSegments()
+                let centerConnect = new Point(center.x, center.y+ (tileSideLength/2) * ((o-1)%3 -1))
+                if(centerConnect != formerCenterConnect) zoneConnect.addChild(new Path(centerConnect, formerCenterConnect))
+                let edgeCenterX = (relevantFramePart[(o-1)%3].getPoint().x + relevantFramePart[(o-1)%3 +1].getPoint().x)/2
+                let edgeCenterY = (relevantFramePart[(o-1)%3].getPoint().y + relevantFramePart[(o-1)%3 +1].getPoint().y)/2
+
+                hexSegment.addChild(new Path(centerConnect, new Point(edgeCenterX, edgeCenterY)))
+            })
+            hexSegment.addChild(zoneConnect)
+            this._pattern.addChild(hexSegment)
+        })
+        this._frameTop.insert(0, this._frameBot.segments[1])
+        this._frameBot.insert(4, this._frameTop.segments[3])
+        this._frameTop.removeSegment(4)
+        this._frameBot.removeSegment(0)
+    }
+
+    _rotateLeft() {
+        if(this._rotation != 3) {
+            this._frameBot.insert(0, this._frameTop.segments[1])
+            this._frameTop.insert(4, this._frameBot.segments[3])
+            this._frameBot.removeSegment(4)
+            this._frameTop.removeSegment(0)
+        }
+        this._graphics.rotate(-45)
+        this._rotation = (this._rotation+3)%4
+    }
+
+    _rotateRight() {
+        if(this._rotation != 2){
+            this._frameTop.insert(0, this._frameBot.segments[1])
+            this._frameBot.insert(4, this._frameTop.segments[3])
+            this._frameTop.removeSegment(4)
+            this._frameBot.removeSegment(0)
+        }
+        this._graphics.rotate(45)
+        this._rotation = (this._rotation+1)%4
     }
 }
 
@@ -273,10 +404,54 @@ class GHexSlot extends GSlot{
     }
 }
 
-class GBoard {
-    constructor(board) {
+class GBoard extends GTile{
+    constructor(board, startTileColor) {
+        super(startTileColor)
 
+        let center = new Point(view.size.width/2, view.size.height/2)
+        let tileWidth =  Math.sqrt(2*tileSideLength**2)
+
+        for(let i = -1.5; i < 2; i++) {
+            this._frameTop.add([center.x+(1-Math.trunc(Math.abs(i)))*(tileWidth/2)+tileSideLength/2, center.y+ Math.sign(i)*(tileSideLength/2) + Math.trunc(i)*(tileWidth/2)])
+            this._frameBot.add([center.x-(1-Math.trunc(Math.abs(i)))*(tileWidth/2)+1-tileSideLength/2, center.y- Math.sign(i)*(tileSideLength/2) - Math.trunc(i)*(tileWidth/2)])
+        }
+        this._frameTop.insert(0, this._frameBot.lastSegment)
+        this._frameBot.insert(0, this._frameTop.lastSegment)
+
+        board.getPathways().forEach(p => { // it doesn’t yet work, not even theoretically
+            let segment = p.getSegments()[0]
+            let startInd = board.getEdges().indexOf(segment.getEnds()[0])
+            let endInd = board.getEdges().indexOf(segment.getEnds()[segment.getEnds().length-1])
+            let gSegment = new CompoundPath()
+            console.log(segment)
+            segment.getEnds().forEach(edge => {
+                let index = board.getEdges().indexOf(edge)
+                let line = new Path({x:center.x, y:center.y-tileSideLength/2-tileWidth/2}, {x:center.x, y:center.y-tileWidth/2})
+                line.rotate(index*45, center)
+                gSegment.addChild(line)
+            })
+            if(startInd%4 == endInd%4 && segment.getEnds().length == 2){
+                gSegment.children[0].join(gSegment.children[1])
+            }else if(startInd%2 == endInd%2 && segment.getEnds().length !=1) {
+                let innerSqrPath = new Path.Rectangle(center.add(-tileSideLength/2), new Size(tileSideLength,tileSideLength))
+                innerSqrPath.removeSegments( (endInd-startInd) /2 +1)
+                innerSqrPath.rotate((3+startInd)*45, center)
+                innerSqrPath.closed = false
+
+                gSegment.addChild(innerSqrPath)
+            }
+
+            this._pattern.addChild(gSegment)
+        })
     }
+
+    
+
+
+    _initialiseMouseEvents() {
+        
+    }
+
 }
 
 // complete model & graphics
@@ -311,20 +486,25 @@ class GameModel {
 }
 
 class GameGraphics {
-    constructor(gameModel, friendlyColor, hostileColor) {
-        this._board = new GBoard(gameModel.getBoard())
-
+    constructor(gameModel, friendlyColor, hostileColor, neutralColor) {
+        this._friendlyColor = friendlyColor
+        this._hostileColor = hostileColor
+        this._neutralColor = neutralColor
+        this._gBoard = new GBoard(gameModel.getBoard(), neutralColor)
+        
         this._gSqrStack = []
         gameModel.getSqrStack().forEach(tile => {
-            this._gSqrStack.push(new GSqrTile(tile, {x:view.size.width-250 +5*this._gSqrStack.length, y:view.size.height-200 +25*this._gSqrStack.length} ,friendlyColor))
+            this._gSqrStack.push(new GSqrTile(tile, {x:view.size.width-250 +5*this._gSqrStack.length, y:view.size.height-200 +25*this._gSqrStack.length} ,hostileColor))
             this._gSqrStack[this._gSqrStack.length-1].toBack()
         })
 
         this._gHexStack = []
-        gameModel.getSqrStack().forEach(tile => {
-            this._gHexStack.push(new GHexTile(tile, {x:view.size.width-100 +5*this._gHexStack.length, y:view.size.height-200 +25*this._gHexStack.length} ,hostileColor))
+        gameModel.getHexStack().forEach(tile => {
+            this._gHexStack.push(new GHexTile(tile, {x:view.size.width-100 +5*this._gHexStack.length, y:view.size.height-200 +25*this._gHexStack.length} ,friendlyColor))
             this._gHexStack[this._gHexStack.length-1].toBack()
         })
+
+        this._gBoard.toBack()
     }
 }
 
@@ -334,8 +514,10 @@ const start = () => {
         let edges = []
         let segments = [[]]
         for(let y = 0; y < 4; y++) {
-            edges.push(new TileEdge(Math.random < 0.5, y*2))
-            if(edges[y].hasConnect()) segments[0].push(edges[y])
+            edges.push(new TileEdge(Math.random() < 0.5, y*2))
+            if(edges[y].hasConnect()) {
+                segments[0].push(edges[y])
+            }
         }
         sqrStack.push(new SqrTile(edges, segments))
     }
@@ -343,28 +525,60 @@ const start = () => {
     let hexStack = []
     for(let x = 0; x < 3; x++) {
         let edges = []
-        let segments = []
+        let segmentsProto = []
         for(let y = 0; y < 3; y++) {
             let segment = []
-            edges.push(new TileEdge(Math.random < 0.5, y+1))
-            edges.push(new TileEdge(Math.random < 0.5, -y-1))
-            if(edges[edges.length-1].hasConnect()) segment.push(edges[edges.length-1])
+            edges.push(new TileEdge(Math.random() < 0.5, y+1))
+            edges.push(new TileEdge(Math.random() < 0.5, -y-1))
             if(edges[edges.length-2].hasConnect()) segment.push(edges[edges.length-2])
-            if(segment.length > 0) segments.push(segment)
+            if(edges[edges.length-1].hasConnect()) segment.push(edges[edges.length-1])
+            if(segment.length > 0) segmentsProto.push(segment)
+        }
+        let segments = []
+        if(segmentsProto.length>0) segments.push(segmentsProto[0])
+        for(let y = 0; y < segmentsProto.length-1; y++) {
+            (Math.random() < 0.5) ? segmentsProto[y+1].forEach(edge=>{segments[segments.length-1].push(edge)}) : segments.push(segmentsProto[y+1])
         }
         hexStack.push(new HexTile(edges, segments))
     }
 
     let bEdges = []
+    let bSegmentArrays = []
+    let bSegments = []
     for (x = 0; x < 8; x++) {
-        bEdges.push(new TileEdge(false, x))
+        bEdges.push(new TileEdge(Math.random() < 0.5, x))
     }
 
-    let b = new Board(bEdges, [])
+    for ( x = 0; x < 8; x++) {
+        if (bEdges[x].hasConnect()) {
+            if(bSegmentArrays == []) {
+                bSegmentArrays.push([bEdges[x]])
+            } else {
+                let z = -1;
+                let connected = false;
+                bSegmentArrays.forEach(segment => {
+                    if(bEdges.indexOf(segment[segment.length-1]) > z && !connected) {
+                        z = bEdges.indexOf(segment[segment.length-1])
+                        if(Math.random() < (1/(bSegmentArrays.length+1))) {
+                            segment.push(bEdges[x])
+                            connected = true;
+                        }
+                    }
+                })
+                if(!connected) bSegmentArrays.push([bEdges[x]])
+            }
+        }
+    }
+    bSegmentArrays.forEach(segment => {
+        bSegments.push(new Pathway(new Segment(segment)))
+    })
 
-    const red = new TeamColor(230,30,30)
-    const blue = new TeamColor(30,30,230)
+    let b = new Board(bEdges, bSegments)
+
+    const red = new TeamColor(224, 17, 95)
+    const blue = new TeamColor(0,95*2,106*2)
+    const green = new TeamColor(173,255,47)
     let model = new GameModel(b, sqrStack, hexStack)
-    let graphics = new GameGraphics(model, blue, red)
+    let graphics = new GameGraphics(model, blue, red, green)
     console.log(model)
 }
