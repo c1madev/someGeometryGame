@@ -47,7 +47,11 @@ class TileEdge {
     }
 
     isDiagonal() {
-        return (this.orientation ==4 || (this.orientation%5)%2 == 1)
+        return (this._orientation ==4 || (this._orientation%5)%2 == 1)
+    }
+
+    getOrientation() {
+        return this._orientation
     }
 
     /*rotate(rotateBy) {
@@ -85,6 +89,24 @@ class Segment {
     
     getEnds() {
         return this._ends
+    }
+
+    boardSort(board) {
+        let bEdges = board.getEdges()
+        let length = this._ends.length
+        if(length != 1) {
+            let d = 8+bEdges.indexOf(this._ends[0]) - bEdges.indexOf(this._ends[length-1]), iSplice = 0;
+            for(let c = 1, i = bEdges.indexOf(this._ends[0]), iPlus1 /* = bEdges.indexOf(this._ends[1])*/; c < length; c++) {
+                iPlus1 = bEdges.indexOf(this._ends[c])
+                if(iPlus1 - i > d) {
+                    d = iPlus1-i;
+                    iSplice = c;
+                }
+                i = iPlus1
+            }
+            let sortedEnds = this._ends.splice(iSplice)
+            this._ends = sortedEnds.concat(this._ends)
+        }
     }
 }
 
@@ -176,6 +198,9 @@ class Board {
         this._edges = edges
         this._accessibleEdges = edges
         this._pathways = pathways
+        this._pathways.forEach(p => {
+            p.getSegments()[0].boardSort(this)
+        })
         this._unfinishedPathways = pathways
     }
 
@@ -410,39 +435,89 @@ class GBoard extends GTile{
 
         let center = new Point(view.size.width/2, view.size.height/2)
         let tileWidth =  Math.sqrt(2*tileSideLength**2)
+        let midOccupied = false
+        let tsl05 = tileSideLength * 0.5
 
         for(let i = -1.5; i < 2; i++) {
-            this._frameTop.add([center.x+(1-Math.trunc(Math.abs(i)))*(tileWidth/2)+tileSideLength/2, center.y+ Math.sign(i)*(tileSideLength/2) + Math.trunc(i)*(tileWidth/2)])
-            this._frameBot.add([center.x-(1-Math.trunc(Math.abs(i)))*(tileWidth/2)+1-tileSideLength/2, center.y- Math.sign(i)*(tileSideLength/2) - Math.trunc(i)*(tileWidth/2)])
+            this._frameTop.add([center.x+(1-Math.trunc(Math.abs(i)))*(tileWidth/2)+tsl05, center.y+ Math.sign(i)*(tsl05) + Math.trunc(i)*(tileWidth/2)])
+            this._frameBot.add([center.x-(1-Math.trunc(Math.abs(i)))*(tileWidth/2)+1-tsl05, center.y- Math.sign(i)*(tsl05) - Math.trunc(i)*(tileWidth/2)])
         }
         this._frameTop.insert(0, this._frameBot.lastSegment)
         this._frameBot.insert(0, this._frameTop.lastSegment)
 
         board.getPathways().forEach(p => { // it doesn’t yet work, not even theoretically
-            let segment = p.getSegments()[0]
-            let startInd = board.getEdges().indexOf(segment.getEnds()[0])
-            let endInd = board.getEdges().indexOf(segment.getEnds()[segment.getEnds().length-1])
+            let sEnds = p.getSegments()[0].getEnds()
             let gSegment = new CompoundPath()
-            console.log(segment)
-            segment.getEnds().forEach(edge => {
+            let connLines = new CompoundPath()
+            let iOccupyMid = false
+
+            console.log(sEnds)
+
+            sEnds.forEach(edge => {
                 let index = board.getEdges().indexOf(edge)
-                let line = new Path({x:center.x, y:center.y-tileSideLength/2-tileWidth/2}, {x:center.x, y:center.y-tileWidth/2})
+                let line = new Path({x:center.x, y:center.y-tileWidth/2},{x:center.x, y:center.y-tsl05-tileWidth/2})
                 line.rotate(index*45, center)
                 gSegment.addChild(line)
             })
-            if(startInd%4 == endInd%4 && segment.getEnds().length == 2){
-                gSegment.children[0].join(gSegment.children[1])
-            }else if(startInd%2 == endInd%2 && segment.getEnds().length !=1) {
-                let innerSqrPath = new Path.Rectangle(center.add(-tileSideLength/2), new Size(tileSideLength,tileSideLength))
-                innerSqrPath.removeSegments( (endInd-startInd) /2 +1)
-                innerSqrPath.rotate((3+startInd)*45, center)
-                innerSqrPath.closed = false
 
-                gSegment.addChild(innerSqrPath)
+            if(sEnds.length > 1){
+                let i = 0
+                
+                for(let c = 1; c < sEnds.length; c++) {
+                    if (iOccupyMid) {
+                        connLines.addChild(new Path(gSegment.getChildren()[c].getSegments()[0].getPoint(), this._graphics.position))
+                    } else if(board.getEdges().indexOf(sEnds[i])%2 == board.getEdges().indexOf(sEnds[c])%2) {
+                        connLines.addChild(new Path(gSegment.getChildren()[i].getSegments()[0].getPoint(),gSegment.getChildren()[c].getSegments()[0].getPoint()))
+                        if(board.getEdges().indexOf(sEnds[i])%4 == board.getEdges().indexOf(sEnds[c])%4 && !midOccupied) {
+                            iOccupyMid = true
+                            midOccupied = true
+                            for(let d = 0; d < connLines.getChildren().length-1; d++) {
+                                connLines.getChildren()[d].getSegments()[1].setPoint(this._graphics.position)
+                            }
+                        }
+                        i = c
+                    } else if( ( (board.getEdges().indexOf(sEnds[c])-board.getEdges().indexOf(sEnds[i])) +8) %8 == 1) {
+                        let meet = new Point(this._graphics.position.add({x:0, y:-tsl05}))
+                        let conn = new Path(meet,this._graphics.position.add(-tsl05))
+                        conn.rotate(45*board.getEdges().indexOf(sEnds[c]),this._graphics.position)
+                        gSegment.getChildren()[c].getSegments()[0].setPoint(conn.getSegments()[0].getPoint())
+                        connLines.addChild(conn)
+
+                    } else if(board.getEdges().indexOf(sEnds[i+1])%2 == board.getEdges().indexOf(sEnds[c])%2 && sEnds[i+1] != sEnds[c] && !board.getEdges()[(board.getEdges().indexOf(sEnds[i+1])+1)%8].hasConnect()) {
+                        let corner = new Point(this._graphics.position.add({x:tsl05, y:-tsl05}))
+                        let conn1 = new Path({x:this._graphics.position.x, y:this._graphics.position.y-tsl05},corner)
+                        let conn2 = new Path({x:this._graphics.position.x+tsl05, y:this._graphics.position.y},corner)
+                        conn1.rotate(45*board.getEdges().indexOf(sEnds[c-1]), this._graphics.position); conn2.rotate(45*board.getEdges().indexOf(sEnds[c-1]), this._graphics.position)
+                        gSegment.getChildren()[c].getSegments()[0].setPoint(conn2.getSegments()[0].getPoint())
+                        connLines.addChildren([conn1, conn2])
+                    } else if(!board.getEdges()[(board.getEdges().indexOf(sEnds[c])+7)%8].hasConnect()) {
+                        let corner = new Point(this._graphics.position.add({x:tsl05, y:tsl05}))
+                        let conn1 = new Path({x:this._graphics.position.x, y:this._graphics.position.y+tsl05},corner)
+                        let conn2 = new Path({x:this._graphics.position.x+tsl05, y:this._graphics.position.y-tsl05},corner)
+                        conn1.rotate(45*(board.getEdges().indexOf(sEnds[c])-4), this._graphics.position); conn2.rotate(45*(board.getEdges().indexOf(sEnds[c])-4), this._graphics.position)
+                        gSegment.getChildren()[c].getSegments()[0].setPoint(conn1.getSegments()[0].getPoint())
+                        gSegment.getChildren()[i].getSegments()[0].setPoint(conn2.getSegments()[0].getPoint())
+                        connLines.addChildren([conn1, conn2])
+                    } else if(!board.getEdges()[(board.getEdges().indexOf(sEnds[i])+1)%8].hasConnect()) {
+                        let corner = new Point(this._graphics.position.add({x:tsl05, y:-tsl05}))
+                        let conn2 = new Path({x:this._graphics.position.x, y:this._graphics.position.y-tsl05},corner)
+                        let conn1 = new Path({x:this._graphics.position.x+tsl05, y:this._graphics.position.y+tsl05},corner)
+                        conn1.rotate(45*board.getEdges().indexOf(sEnds[c-1]), this._graphics.position); conn2.rotate(45*board.getEdges().indexOf(sEnds[c-1]), this._graphics.position)
+                        gSegment.getChildren()[i].getSegments()[0].setPoint(conn2.getSegments()[0].getPoint())
+                        gSegment.getChildren()[c].getSegments()[0].setPoint(conn1.getSegments()[0].getPoint())
+                        connLines.addChildren([conn1, conn2])
+                    } else if (!midOccupied && connLines.getChildren().length == 0) {
+                        connLines.addChild(new Path(gSegment.getChildren()[c].getSegments()[0].getPoint(), this._graphics.position))
+                        connLines.addChild(new Path(gSegment.getChildren()[c-1].getSegments()[0].getPoint(), this._graphics.position))
+                        iOccupyMid = true
+                        midOccupied = true
+                    } else alert("something went wrong")
+                }
             }
-
+            this._pattern.addChild(connLines)
             this._pattern.addChild(gSegment)
         })
+        this._frame.rotate(-45)
     }
 
     
