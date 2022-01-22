@@ -253,6 +253,14 @@ class TeamColor {
         return `rgb(${Math.ceil(this._r/5)+150},${Math.ceil(this._g/5)+150},${Math.ceil(this._b/5)+150})`
     }
 
+    getSelectPathColor() {
+        return `rgb(${this._r/1.2},${this._g/1.2},${this._b/1.2})`
+    }
+
+    getSelectBaseColor() {
+        return `rgb(${Math.ceil(this._r/5)+170},${Math.ceil(this._g/5)+170},${Math.ceil(this._b/5)+170})`
+    }
+
     getFrameTopColor() {
         return `rgb(${Math.ceil(this._r/5)+200},${Math.ceil(this._g/5)+200},${Math.ceil(this._b/5)+200})`
     }
@@ -302,6 +310,16 @@ class GTile {
     _rotateRight() {}
 
     _initialiseMouseEvents() {
+        this._graphics.onMouseEnter = (event) => {
+            this._frame.fillColor = this._teamColor.getSelectBaseColor()
+            this._pattern.strokeColor = this._teamColor.getSelectPathColor()
+        }
+
+        this._graphics.onMouseLeave = (event) => {
+            this._frame.fillColor = this._teamColor.getBaseColor()
+            this._pattern.strokeColor = this._teamColor.getPathColor()
+        }
+
         this._graphics.onMouseDrag = (event) => {
             if(this._movable){
                 this._graphics.position.x += event.delta.x;
@@ -309,9 +327,12 @@ class GTile {
             }
         }
         this._graphics.onClick = (event) => {
-            if(this._movable && Math.abs(event.delta.x)+Math.abs(event.delta.y) == 0){
-                if(event.button == 0) this._rotateLeft() // event.button is not in the original paper.js, added it because I needed a right-click identifier
-                else if(event.button == 2) this._rotateRight()
+            if(this._movable){
+                //this._gameGraphics.generateSlots(this)
+                if(Math.abs(event.delta.x)+Math.abs(event.delta.y) == 0){
+                    if(event.button == 0) this._rotateLeft() // event.button is not in the original paper.js, added it because I needed a right-click identifier
+                    else if(event.button == 2) this._rotateRight()
+                }
             }
         }
     }
@@ -519,14 +540,6 @@ class GBoard extends GTile{
         })
         this._frame.rotate(-45)
     }
-
-    
-
-
-    _initialiseMouseEvents() {
-        
-    }
-
 }
 
 // complete model & graphics
