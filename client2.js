@@ -157,7 +157,7 @@ class Tile{
     }
 
     rotate = (steps) => {
-        this.edges.forEach(edge => {
+        this._edges.forEach(edge => {
             edge.rotate(steps)
         })
     }
@@ -252,9 +252,8 @@ class TeamColor {
     }
 }
 
-class GTile extends LocalEventEmitter{
+class GTile{
     constructor(teamColor) {
-        super()
         this._teamColor = teamColor
 
         this._base = new Path()
@@ -312,6 +311,10 @@ class GTile extends LocalEventEmitter{
         return this._edges
     }
 
+    on(evt, arg) {
+        this._graphics.on(evt,arg)
+    }
+
     _rotateLeft() {}
 
     _rotateRight() {}
@@ -334,9 +337,15 @@ class GTile extends LocalEventEmitter{
             }
         }
 
+        this._graphics.onMouseDown = (event) => {
+            if(this._movable){
+                this._graphics.emit("movableClick", this)
+                this._graphics.bringToFront()
+            }
+        }
+
         this._graphics.onClick = (event) => {
             if(this._movable){
-                this.emit("movableClick", this)
                 if(Math.abs(event.delta.x)+Math.abs(event.delta.y) == 0){
                     if(event.button == 0) { // event.button is not in the original paper.js, added it because I needed to identify right and left click
                         this._rotateLeft()
@@ -345,9 +354,11 @@ class GTile extends LocalEventEmitter{
                         this._rotateRight()
                         this._rotation = (this._rotation + 1) % 8
                     }
+                    this._graphics.emit("rotated", event.button-1)
                 }
+                this._graphics.emit("movableClick", this)
             } else {
-                this.emit("fixedClick", this)
+                this._graphics.emit("fixedClick", this)
             }
         }
     }
@@ -389,12 +400,18 @@ class GSqrTile extends GTile {
 
     _rotateRight() {
         this._graphics.rotate(45)
-        if(this._rotation%2 == 0) this._frame.rotate(-90)
+        if(this._rotation%2 == 0) {
+            this._frameTop.children.unshift(this._frameBot.children.pop())
+            this._frameBot.children.unshift(this._frameTop.children.pop())
+        }
     }
 
     _rotateLeft() {
         this._graphics.rotate(-45)
-        if(this._rotation%2 == 1) this._frame.rotate(90)
+        if(this._rotation%2 == 1) {
+            this._frameTop.children.push(this._frameBot.children.shift())
+            this._frameBot.children.push(this._frameTop.children.shift())
+        }
     }
 
 
@@ -411,8 +428,8 @@ class GHexTile extends GTile {
         for(let i = -0.5, h = -1.5; i < 2; i++, h++) {
             this._frameTop.addChild(new Path([center.x+(1-Math.trunc(Math.abs(h)))*(tileWidth/2), center.y+ Math.sign(h)*(tileSideLength/2) + Math.trunc(h)*(tileWidth/2)],
                                             [center.x+(1-Math.trunc(Math.abs(i)))*(tileWidth/2), center.y+ Math.sign(i)*(tileSideLength/2) + Math.trunc(i)*(tileWidth/2)]))
-            this._frameBot.addChild(new Path([center.x-(1-Math.trunc(Math.abs(h)))*(tileWidth/2)+1, center.y+ Math.sign(h)*(tileSideLength/2) + Math.trunc(h)*(tileWidth/2)],
-                                            [center.x-(1-Math.trunc(Math.abs(i)))*(tileWidth/2)+1, center.y+ Math.sign(i)*(tileSideLength/2) + Math.trunc(i)*(tileWidth/2)]))
+            this._frameBot.addChild(new Path([center.x-(1-Math.trunc(Math.abs(h)))*(tileWidth/2), center.y+ Math.sign(h)*(tileSideLength/2) + Math.trunc(h)*(tileWidth/2)],
+                                            [center.x-(1-Math.trunc(Math.abs(i)))*(tileWidth/2), center.y+ Math.sign(i)*(tileSideLength/2) + Math.trunc(i)*(tileWidth/2)]))
             this._edges.push(this._frameTop.getChildren()[Math.ceil(i)])
             this._edges.push(this._frameBot.getChildren()[Math.ceil(i)])
         }
@@ -465,16 +482,6 @@ class GHexTile extends GTile {
             this._frameBot.children.push(this._frameTop.children.pop())
         }
         this._graphics.rotate(45)
-    }
-}
-
-class GSlot{
-    constructor(gTile, position) {
-        this._graphics = new Path()
-        this._graphics.copyContent(gTile.getBase())
-        this._graphics.fillColor = "rgb(255,255,255)"
-        this._graphics.moveTo(position)
-        this._graphics.rotate(45*gTile.getRotation)
     }
 }
 
@@ -587,18 +594,20 @@ class GBoard extends GTile{
         this._slots = new Group()
     }
 
+    getSlots() {
+        return this._slots.getChildren()
+    }
+
     generateSlots(gTile) {
-        let bEdges = this._board.getAccessibleEdges()
+        this._slots.removeChildren()
+        let bEdges = this._board.getAccessibleEdges().slice()
         bEdges.unshift(bEdges.pop())
         let tEdges = gTile.getParentTile().getEdges()
         for(let c = 0; c < bEdges.length; c++) {
             for(let c1 = 0; c1 < tEdges.length; c1++) {
                 if(tEdges[c1].hasConnect() == bEdges[c].hasConnect() && (tEdges[c1].getOrientation() + bEdges[c].getOrientation()) == 7){
-                    let slotPosition = this._accessibleEdges[c].position.add(gTile.getCenter().subtract(gTile.getEdges()[c1].position))
-                    let sP = new Path.Rectangle(slotPosition,10,10)
-                    let eP = new Path.Rectangle(this._accessibleEdges[c].position,10,10)
-                    sP.fillColor = "black"
-                    eP.fillColor = "red"
+                    let centerEdgeOffset = gTile.getCenter().subtract(gTile.getEdges()[c1].position)
+                    let slotPosition = this._accessibleEdges[c].position.add(centerEdgeOffset)
                     this._slots.addChild(this.generateSlot(gTile, slotPosition))
                 }
             }
@@ -608,12 +617,12 @@ class GBoard extends GTile{
 
     generateSlot(gTile, position) {
         let slot = new Path()
+        slot.gTiles = [gTile]
         slot.copyContent(gTile.getBase())
         slot.fillColor = "rgba(255,255,255,0.2)"
         slot.strokeColor = "rgba(255,255,255,0.3)"
         slot.strokeWidth = 3
         slot.setPosition(position)
-        slot.rotate(45*gTile.getRotation())
         return slot
     }
 }
@@ -647,10 +656,21 @@ class GameModel {
     getBoard() {
         return this._board
     }
+
+    rotate(args) {
+        if(args.type == "sqr") {
+            this._sqrStack[0].rotate(args.steps)
+        }else if(args.type == "hex") {
+            this._hexStack[0].rotate(args.steps)
+        }else{
+            throw(new Error(`${args.type} is not a valid type.`))
+        }
+    }
 }
 
-class GameGraphics {
+class GameGraphics extends LocalEventEmitter{
     constructor(gameModel, friendlyColor, hostileColor, neutralColor) {
+        super()
         this._friendlyColor = friendlyColor
         this._hostileColor = hostileColor
         this._neutralColor = neutralColor
@@ -660,12 +680,19 @@ class GameGraphics {
         gameModel.getSqrStack().forEach(tile => {
             let gSqr = new GSqrTile(tile, {x:view.size.width-250 +5*this._gSqrStack.length, y:view.size.height-200 +25*this._gSqrStack.length} ,hostileColor)
             gSqr.toBack()
-            gSqr.on("moveClick", gTile => {
+            gSqr.on("movableClick", gTile => {
                 this._gBoard.generateSlots(gTile)
-                console.log("hej")
             })
             gSqr.on("fixedClick", gTile => {
                 
+            })
+            gSqr.on("rotated", steps => {
+                this.emit("rotated", {steps:steps, type:"sqr"})
+            })
+            gSqr.on("click", evt => {
+                this._gBoard.getSlots().forEach(slot => {
+                    if(slot.contains(evt.target.position)) evt.target.position = slot.position
+                })
             })
             this._gSqrStack.push(gSqr)
         })
@@ -673,8 +700,23 @@ class GameGraphics {
 
         this._gHexStack = []
         gameModel.getHexStack().forEach(tile => {
-            this._gHexStack.push(new GHexTile(tile, {x:view.size.width-100 +5*this._gHexStack.length, y:view.size.height-200 +25*this._gHexStack.length} ,friendlyColor))
-            this._gHexStack[this._gHexStack.length-1].toBack()
+            let gHex = new GHexTile(tile, {x:view.size.width-100 +5*this._gHexStack.length, y:view.size.height-200 +25*this._gHexStack.length} ,friendlyColor)
+            gHex.toBack()
+            gHex.on("movableClick", gTile => {
+                this._gBoard.generateSlots(gTile)
+            })
+            gHex.on("fixedClick", gTile => {
+                
+            })
+            gHex.on("rotated", steps => {
+                this.emit("rotated", {steps:steps, type:"hex"})
+            })
+            gHex.on("click", evt => {
+                this._gBoard.getSlots().forEach(slot => {
+                    if(slot.contains(evt.target.position)) evt.target.position = slot.position
+                })
+            })
+            this._gHexStack.push(gHex)
         })
         this._gHexStack[0]._movable = true
 
@@ -784,7 +826,10 @@ const start = () => {
     let b = new Board(bEdges, bSegments)
     let model = new GameModel(b, sqrStack, hexStack)
     let graphics = new GameGraphics(model, blue, red, green)
-    graphics._gBoard.generateSlots(graphics._gSqrStack[0])
+
+    graphics.on("rotated", arg => {
+        model.rotate(arg)
+    })
 
     console.log("Model", model,"\nGraphics", graphics)
 
