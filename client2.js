@@ -413,6 +413,7 @@ class GTile {
                 this._graphics.emit("rotate",1)
             }
         }
+        //mouseWheels end
 
         this._graphics.onDoubleClick = (event) => {
             if(this._slot){
