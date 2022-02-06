@@ -652,15 +652,17 @@ class GBoard extends GTile{
             this._base.add(edge.getSegments()[0])
         })
 
-        this._slots = new Group()
+        this._slots = {}
+        this._slotGroup = new Group()
     }
 
     removeSlots() {
-        this._slots.removeChildren()
+        this._slots = {}
+        this._slotGroup.removeChildren()
     }
 
     getSlots() {
-        return this._slots.getChildren()
+        return {edges:this._slots,paths:this._slotGroup.getChildren()}
     }
 
     generateSlots(gTile) {
@@ -671,22 +673,25 @@ class GBoard extends GTile{
             for(let c1 = 0; c1 < tEdges.length; c1++) {
                 if(tEdges[c1].hasConnect() == bEdges[c].hasConnect() && (tEdges[c1].getOrientation() + bEdges[c].getOrientation()) == 7){
                     let slotPosition = this._accessibleEdges[c].position.add(gTile.getCenter().subtract(gTile.getEdges()[c1].position))
-                    this._slots.addChild(this.generateSlot(gTile, slotPosition))
+                    this.generateSlot(gTile, slotPosition, {t:c1, b:c})
                 }
             }
         }
-        this._slots.sendToBack()
+        this._slotGroup.sendToBack()
     }
 
-    generateSlot(gTile, position) {
-        let slot = new Path()
-        slot.gTiles = [gTile]
-        slot.copyContent(gTile.getBase())
-        slot.fillColor = "rgba(255,255,255,0.2)"
-        slot.strokeColor = "rgba(255,255,255,0.3)"
-        slot.strokeWidth = frameWidth
-        slot.setPosition(position)
-        return slot
+    generateSlot(gTile, position, edges) {
+        (this._slots[`${position.x}/${position.y}`] || (this._slots[`${position.x}/${position.y}`] = [])).push(edges)
+        if(this._slots[`${position.x}/${position.y}`].length == 1) {
+            let slot = new Path()
+            slot.edgeCombinations = [edges]
+            slot.copyContent(gTile.getBase())
+            slot.fillColor = "rgba(255,255,255,0.2)"
+            slot.strokeColor = "rgba(255,255,255,0.3)"
+            slot.strokeWidth = frameWidth
+            slot.setPosition(position)
+            this._slotGroup.addChild(slot)
+        }
     }
 }
 
@@ -764,7 +769,7 @@ class GameGraphics extends LocalEventEmitter{
         stackTile.on("needSlots", gTile => {
             this._generateSlots(gTile)
             let hitPoint = gTile.getBase().position
-            this._gBoard.getSlots().forEach(slot => {
+            this._gBoard.getSlots().paths.forEach(slot => {
                 if(slot.contains(hitPoint)) {
                     gTile.setPosition(slot.position)
                     gTile.setSlot(slot)
