@@ -3174,7 +3174,8 @@ var Item = Base.extend(Emitter, {
 },
 new function() {
 	var handlers = ['onMouseDown', 'onMouseUp', 'onMouseDrag', 'onClick',
-			'onDoubleClick', 'onMouseMove', 'onMouseEnter', 'onMouseLeave'];
+			'onDoubleClick', 'onMouseMove', 'onMouseEnter', 'onMouseLeave',
+			'onMouseWheel', 'onMouseWheelFore', 'onMouseWheelBack']; // new code: all the events in this line are added
 	return Base.each(handlers,
 		function(name) {
 			this._events[name] = {
@@ -13228,14 +13229,15 @@ new function() {
 			}
 		}
 	}
-
+	
 	function handleMouseMove(view, event, point) {
 		view._handleMouseEvent('mousemove', event, point);
 	}
-
+	
 	var navigator = window.navigator,
-		mousedown, mousemove, mouseup;
-	if (navigator.pointerEnabled || navigator.msPointerEnabled) {
+		mousedown, mousemove, mouseup, wheel = 'wheel';						// new code: wheel is not originally in paper.js
+	if (navigator.pointerEvent || navigator.pointerEnabled || navigator.msPointerEnabled) { 
+		//new code: pointerEvent is the up-to-date thing to use. It is not in the original paper.js. I hope it works.
 		mousedown = 'pointerdown MSPointerDown';
 		mousemove = 'pointermove MSPointerMove';
 		mouseup = 'pointerup pointercancel MSPointerUp MSPointerCancel';
@@ -13313,6 +13315,13 @@ new function() {
 			view._handleMouseEvent('mouseup', event);
 		mouseDown = dragging = false;
 	};
+
+	// new code: added wheel event
+	docEvents[wheel] = function(event) {
+		var view = View._focused = getView(event);
+		view._handleMouseEvent('mousewheel',event);
+	}
+	//end
 
 	DomEvent.add(document, docEvents);
 
@@ -13407,8 +13416,8 @@ new function() {
 
 	return {
 		_viewEvents: viewEvents,
-
 		_handleMouseEvent: function(type, event, point) {
+
 			var itemEvents = this._itemEvents,
 				hitItems = itemEvents.native[type],
 				nativeMove = type === 'mousemove',
@@ -13483,6 +13492,15 @@ new function() {
 				wasInView = false;
 				handle = true;
 			}
+			//new code: added code to emit wheelEvents
+			if(mouse.wheel) {
+				if(!prevented) {
+					emitMouseEvent(overItem, null, (Math.sign(event.deltaY) == 1) ? 'mousewheelfore' : 'mousewheelback',
+							event, point);
+					emitMouseEvent(overItem, null, 'mousewheel', event, point)
+				}
+			}
+			//end
 			lastPoint = point;
 			if (handle && tool) {
 				called = tool._handleMouseEvent(type, event, point, mouse)
@@ -13491,7 +13509,7 @@ new function() {
 
 			if (
 				event.cancelable !== false
-				&& (called && !mouse.move || mouse.down && responds('mouseup'))
+				&& (called && !mouse.move && !mouse.wheel || mouse.down && responds('mouseup')) //added && !mouse.wheel
 			) {
 				event.preventDefault();
 			}
