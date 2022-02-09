@@ -133,7 +133,7 @@ class Tile{
             this._pathSegments.push(new Segment(segmentEnds))
             this._pathSegments[this._pathSegments.length-1].parentTile = this
         }
-        this._mainConnect = null
+        this._originalConnects = null
     }
 
     getEdges = () => {
@@ -148,13 +148,12 @@ class Tile{
         return this._mainConnect
     }
 
-    setMainConnect = (tileEdge) => {
-        if (this._mainConnect == null) {
-            this._mainConnect = tileEdge
+    setOriginalConnects = (args) => {
+        if (!this._originalConnects) {
+            this._originalConnects = args
             return true
-        } else {
-            return false
         }
+        return false
     }
 
     rotate = (steps) => {
@@ -179,7 +178,7 @@ class HexTile extends Tile{
 class Board {
     constructor(edges, pathways) {
         this._edges = edges
-        this._accessibleEdges = edges
+        this._accessibleEdges = edges.slice()
         this._pathways = pathways
         this._pathways.forEach(p => {
             p.getSegments()[0].boardSort(this)
@@ -203,10 +202,30 @@ class Board {
         return this._unfinishedPathways
     }
 
-    addTile(tileToAdd, connectionEdge) {
-        this._edges.push(tileToAdd.getEdges())
-        tileToAdd.setMainConnect(connectionEdge) // lots to do
-        
+    addTile(tileToAdd, edges) {
+        let fits = false
+        let tileEdges = tileToAdd.getEdges().slice()
+        edges.forEach(edge => {
+            console.log(tileEdges[edge.t].getOrientation(), this._accessibleEdges[edge.b].getOrientation())
+            if(tileEdges[edge.t].getOrientation() + this._accessibleEdges[edge.b].getOrientation() == 7) fits = true
+        })
+        if(!fits) return false
+
+        this._edges.push(...tileToAdd.getEdges())
+        tileEdges = tileEdges.concat(tileEdges)
+        let eLen = edges.length
+        for(let c = 0; c < eLen; c++) {
+            this._accessibleEdges[edges[c].b].canAccess = false
+            tileToAdd.getEdges()[edges[c].t].canAccess = false
+
+            this._accessibleEdges.splice(edges[c].b-1, 1, ...tileEdges.slice(edges[c].t+1,
+                (edges[c].t < edges[(c+1)%eLen].t) ? edges[(c+1)%eLen].t : edges[(c+1)%eLen].t+tileEdges.length/2))
+            console.log(tileEdges.slice(edges[c].t+1,
+                (edges[c].t < edges[(c+1)%eLen].t) ? edges[(c+1)%eLen].t : edges[(c+1)%eLen].t+tileEdges.length/2))
+        }
+        console.log(this._accessibleEdges)
+        tileToAdd.setOriginalConnects(edges)
+        return true
     }
 
     _addPathway(pathway) {
@@ -418,7 +437,7 @@ class GTile {
         this._graphics.onDoubleClick = (event) => {
             if(this._slot){
                 this._movable = false
-                this._graphics.emit("confirm", this._slot)
+                this._graphics.emit("newTile", this._slot)
                 this._slot = null
             }
         }
@@ -483,7 +502,6 @@ class GHexTile extends GTile {
         super(color, "hex")
 
         this._parentTile = hexTile
-
         let tileWidth =  Math.sqrt(2*tileSideLength**2)
 
         for(let i = -0.5, h = -1.5; i < 2; i++, h++) {
@@ -491,9 +509,8 @@ class GHexTile extends GTile {
                                             [center.x+(1-Math.trunc(Math.abs(i)))*(tileWidth/2), center.y+ Math.sign(i)*(tileSideLength/2) + Math.trunc(i)*(tileWidth/2)]))
             this._frameBot.addChild(new Path([center.x-(1-Math.trunc(Math.abs(h)))*(tileWidth/2)+1, center.y+ Math.sign(h)*(tileSideLength/2) + Math.trunc(h)*(tileWidth/2)],
                                             [center.x-(1-Math.trunc(Math.abs(i)))*(tileWidth/2)+1, center.y+ Math.sign(i)*(tileSideLength/2) + Math.trunc(i)*(tileWidth/2)]))
-            this._edges.push(this._frameTop.getChildren()[Math.ceil(i)])
-            this._edges.push(this._frameBot.getChildren()[Math.ceil(i)])
         }
+        this._edges = this._frameTop.getChildren().concat(this._frameBot.getChildren().slice().reverse())
 
         let baseTop = new Path(this._frameTop.getChildren()[0].getSegments()[0])
         let baseBot = new Path(this._frameBot.getChildren()[0].getSegments()[0])
@@ -509,7 +526,6 @@ class GHexTile extends GTile {
             let hexSegment = new CompoundPath()
             let formerCenterConnect = new Point(center.x, center.y+ (tileSideLength/2) * ((segment.getEnds()[0].getOrientation()-1)%3 -1))
             segment.getEnds().forEach(edge => {
-                let i = hexTile.getEdges().indexOf(edge)
                 let o = edge.getOrientation()
                 let relevantFramePart = this._frame.getChildren()[Math.floor(o/4)].getChildren()
                 let centerConnect = new Point(center.x, center.y+ (tileSideLength/2) * ((o-1)%3 -1))
@@ -647,13 +663,34 @@ class GBoard extends GTile{
         this._frame.rotate(-45)
 
         this._edges = this._frameTop.getChildren().concat(this._frameBot.getChildren())
-        this._accessibleEdges = this._edges
+        this._accessibleEdges = this._edges.slice()
         this._edges.forEach(edge => {
             this._base.add(edge.getSegments()[0])
         })
 
         this._slots = {}
         this._slotGroup = new Group()
+
+        this._tileGroup = new Group()
+        this._graphics.addChild(this._tileGroup)
+    }
+
+    addGTile(gTile, edges) {
+        let tileEdges = gTile.getEdges().slice()
+        tileEdges = tileEdges.concat(tileEdges)
+
+        this._edges.push(...gTile.getEdges())
+
+        let eLen = edges.length
+        for(let c = 0; c < eLen; c++) {
+            this._accessibleEdges[edges[c].b].canAccess = false
+            gTile.getEdges()[edges[c].t].canAccess = false
+
+            this._accessibleEdges.splice(edges[c].b-1, 1, ...tileEdges.slice(edges[c].t+1,
+                (edges[c].t < edges[(c+1)%eLen].t) ? edges[(c+1)%eLen].t : edges[(c+1)%eLen].t+tileEdges.length/2))
+        }
+        this._tileGroup.addChild(gTile._graphics)
+        return true
     }
 
     removeSlots() {
@@ -667,12 +704,11 @@ class GBoard extends GTile{
 
     generateSlots(gTile) {
         let bEdges = this._board.getAccessibleEdges().slice()
-        bEdges.unshift(bEdges.pop())
         let tEdges = gTile.getParentTile().getEdges().slice()
         for(let c = 0; c < bEdges.length; c++) {
             for(let c1 = 0; c1 < tEdges.length; c1++) {
                 if(tEdges[c1].hasConnect() == bEdges[c].hasConnect() && (tEdges[c1].getOrientation() + bEdges[c].getOrientation()) == 7){
-                    let slotPosition = this._accessibleEdges[c].position.add(gTile.getCenter().subtract(gTile.getEdges()[c1].position))
+                    let slotPosition = this._accessibleEdges[(c+1)%this._accessibleEdges.length].position.add(gTile.getCenter().subtract(gTile.getEdges()[c1].position))
                     this.generateSlot(gTile, slotPosition, {t:c1, b:c})
                 }
             }
@@ -684,7 +720,7 @@ class GBoard extends GTile{
         (this._slots[`${position.x}/${position.y}`] || (this._slots[`${position.x}/${position.y}`] = [])).push(edges)
         if(this._slots[`${position.x}/${position.y}`].length == 1) {
             let slot = new Path()
-            slot.edgeCombinations = [edges]
+            slot.edges = [edges]
             slot.copyContent(gTile.getBase())
             slot.fillColor = "rgba(255,255,255,0.2)"
             slot.strokeColor = "rgba(255,255,255,0.3)"
@@ -705,9 +741,9 @@ class GameModel extends LocalEventEmitter{
         this._remainingTiles = 25
     }
 
-    _restock(tile) {
-        if (typeof(tile) == SqrTile) this._sqrStack.push(tile);
-        else if (typeof(tile) == HexTile) this._hexStack.push(tile);
+    restock(tile) {
+        if (tile instanceof SqrTile) this._sqrStack.push(tile);
+        else if (tile instanceof HexTile) this._hexStack.push(tile);
     }
 
     rotate(args) {
@@ -728,6 +764,14 @@ class GameModel extends LocalEventEmitter{
 
     getStacks() {
         return {sqr:this.getSqrStack, hex:this.getHexStack}
+    }
+
+    addTile(args) {
+        if(this._board.addTile(args.type == "sqr" ? this._sqrStack[0] : this._hexStack[0], args.edges)) {
+            args.type == "sqr" ? this._sqrStack.shift() : this._hexStack.shift()
+            return true
+        }
+        return false
     }
 
     getBoard() {
@@ -765,6 +809,32 @@ class GameGraphics extends LocalEventEmitter{
         this._gBoard.toBack()
     }
 
+    setTilesMovable() {
+        this._gSqrStack[0]._movable = true
+        this._gHexStack[0]._movable = true
+    }
+
+    updateSqrStack(sqrStack, edgePairs) {
+        console.log(sqrStack.length, this._gSqrStack.length)
+        if(sqrStack[sqrStack.length-1] == this._gSqrStack[this._gSqrStack.length-1]._parentTile) return
+
+        this._gBoard.addGTile(this._gSqrStack.shift(), edgePairs)
+        this._gSqrStack.forEach(sqr => {
+            sqr.setPosition(sqr.getBase().getPosition().subtract(new Point(5,25)))
+        })
+        this._gSqrStack.push(new GSqrTile(sqrStack[2], {x:view.size.width-260, y:view.size.height-250}, this._friendlyColor))
+    }
+
+    updateHexStack(hexStack, edgePairs) {
+        if(hexStack[hexStack.length-1] == this._gSqrStack[this._gSqrStack.length-1]._parentTile) return
+
+        this._gBoard.addGTile(this._gHexStack.shift(), edgePairs)
+        this._gHexStack.forEach(hex => {
+            hex.setPosition(hex.getBase().getPosition().subtract(new Point(5,25)))
+        })
+        this._gHexStack.push(new GHexTile(hexStack[2], {x:view.size.width-110, y:view.size.height-250}, this._hostileColor))
+    }
+
     _installGTileListeners(stackTile) {
         stackTile.on("needSlots", gTile => {
             this._generateSlots(gTile)
@@ -779,16 +849,24 @@ class GameGraphics extends LocalEventEmitter{
         stackTile.on("rotate", steps => this.emit("rotate", {steps:steps, type:stackTile.getType()}))
         stackTile.on("activated", gTile => {
             if(gTile.getType() == "sqr") {
-                this._gHexStack[0].setPosition({x:view.size.width-100, y:view.size.height-200})
-                this._gHexStack[0].rotate(1- (this._gHexStack[0].getRotation()+1)%4)
+                this._deactivateHexStack()
             } else {
-                this._gSqrStack[0].setPosition({x:view.size.width-250, y:view.size.height-200})
-                if(this._gSqrStack[0].getRotation()%2 == 1) this._gSqrStack[0].rotate(1)
+                this._deactivateSqrStack()
             }
         })
-        stackTile.on("confirm", slot => {
-            stackTile
+        stackTile.on("newTile", slot => {
+            this.emit("newTile", {type:stackTile.getType(), edges:slot.edges})
         })
+    }
+
+    _deactivateHexStack() {
+        this._gHexStack[0].setPosition({x:view.size.width-100, y:view.size.height-200})
+        this._gHexStack[0].rotate(1- (this._gHexStack[0].getRotation()+1)%4)
+    }
+
+    _deactivateSqrStack() {
+        this._gSqrStack[0].setPosition({x:view.size.width-250, y:view.size.height-200})
+        if(this._gSqrStack[0].getRotation()%2 == 1) this._gSqrStack[0].rotate(1)
     }
 
     _generateSlots(gTile) {
@@ -813,16 +891,18 @@ const start = () => {
 
     let hexStack = []
     for(let x = 0; x < 3; x++) {
-        let edges = []
+        let edgestop = []
+        let edgesbot = []
         let segmentsProto = []
         for(let y = 0; y < 3; y++) {
             let segment = []
-            edges.push(new TileEdge(Math.random() < 0.5, y+1))
-            edges.push(new TileEdge(Math.random() < 0.5, -y-1))
-            if(edges[edges.length-2].hasConnect()) segment.push(edges[edges.length-2])
-            if(edges[edges.length-1].hasConnect()) segment.push(edges[edges.length-1])
+            edgestop.push(new TileEdge(Math.random() < 0.5, y+1))
+            edgesbot.push(new TileEdge(Math.random() < 0.5, -y-1))
+            if(edgestop[edgestop.length-1].hasConnect()) segment.push(edgestop[edgestop.length-1])
+            if(edgesbot[edgesbot.length-1].hasConnect()) segment.push(edgesbot[edgesbot.length-1])
             if(segment.length > 0) segmentsProto.push(segment)
         }
+        let edges = edgestop.concat(edgesbot.reverse())
         let segments = []
         if(segmentsProto.length>0) segments.push(segmentsProto[0])
         for(let y = 0; y < segmentsProto.length-1; y++) {
@@ -903,8 +983,48 @@ const start = () => {
     let model = new GameModel(b, sqrStack, hexStack)
     let graphics = new GameGraphics(model, blue, red, green)
 
+
+
     graphics.on("rotate", args => {
         model.rotate(args)
+    })
+    graphics.on("newTile", args => {
+        if(model.addTile(args)) {
+            let newTile
+            if(args.type == "sqr") {
+                let edges = []
+                let segments = [[]]
+                for(let y = 0; y < 4; y++) {
+                    edges.push(new TileEdge(Math.random() < 0.5, y*2))
+                    if(edges[y].hasConnect()) {
+                        segments[0].push(edges[y])
+                    }
+                }
+                newTile = new SqrTile(edges, segments)
+            } else {
+                let edgestop = []
+                let edgesbot = []
+                let segmentsProto = []
+                for(let y = 0; y < 3; y++) {
+                    let segment = []
+                    edgestop.push(new TileEdge(Math.random() < 0.5, y+1))
+                    edgesbot.push(new TileEdge(Math.random() < 0.5, -y-1))
+                    if(edgestop[edgestop.length-1].hasConnect()) segment.push(edgestop[edgestop.length-1])
+                    if(edgesbot[edgesbot.length-1].hasConnect()) segment.push(edgesbot[edgesbot.length-1])
+                    if(segment.length > 0) segmentsProto.push(segment)
+                }
+                let edges = edgestop.concat(edgesbot.reverse())
+                let segments = []
+                if(segmentsProto.length>0) segments.push(segmentsProto[0])
+                for(let y = 0; y < segmentsProto.length-1; y++) {
+                    (Math.random() < 0.5) ? segmentsProto[y+1].forEach(edge=>{segments[segments.length-1].push(edge)}) : segments.push(segmentsProto[y+1])
+                }
+                newTile = new HexTile(edges, segments)
+            }
+            model.restock(newTile)
+            args.type == "sqr" ? graphics.updateSqrStack(model.getSqrStack(), args.edges) : graphics.updateHexStack(model.getHexStack(), args.edges)
+        }
+        graphics.setTilesMovable()
     })
 
     graphics._gBoard.generateSlots(graphics._gSqrStack[0])
