@@ -13495,7 +13495,7 @@ new function() {
 			//new code: added code to emit wheelEvents
 			if(mouse.wheel) {
 				if(!prevented) {
-					emitMouseEvent(overItem, null, (Math.sign(event.deltaY) == 1) ? 'mousewheelfore' : 'mousewheelback',
+					emitMouseEvent(overItem, null, (Math.sign(event.deltaY) == 1) ? 'mousewheelback' : 'mousewheelfore',
 							event, point);
 					emitMouseEvent(overItem, null, 'mousewheel', event, point)
 				}

@@ -1,4 +1,4 @@
-let tileSideLength = 50                                     // All of the tiles should have the same side length
+let tileSideLength = 40                                     // All of the tiles should have the same side length
 let frameWidth = 3
 let canvas = document.getElementById("someGeometryGame")
 let debug = false
@@ -206,7 +206,6 @@ class Board {
         let fits = false
         let tileEdges = tileToAdd.getEdges().slice()
         edges.forEach(edge => {
-            console.log(tileEdges[edge.t].getOrientation(), this._accessibleEdges[edge.b].getOrientation())
             if(tileEdges[edge.t].getOrientation() + this._accessibleEdges[edge.b].getOrientation() == 7) fits = true
         })
         if(!fits) return false
@@ -218,12 +217,9 @@ class Board {
             this._accessibleEdges[edges[c].b].canAccess = false
             tileToAdd.getEdges()[edges[c].t].canAccess = false
 
-            this._accessibleEdges.splice(edges[c].b-1, 1, ...tileEdges.slice(edges[c].t+1,
-                (edges[c].t < edges[(c+1)%eLen].t) ? edges[(c+1)%eLen].t : edges[(c+1)%eLen].t+tileEdges.length/2))
-            console.log(tileEdges.slice(edges[c].t+1,
+            this._accessibleEdges.splice(edges[c].b, 1, ...tileEdges.slice(edges[c].t+1,
                 (edges[c].t < edges[(c+1)%eLen].t) ? edges[(c+1)%eLen].t : edges[(c+1)%eLen].t+tileEdges.length/2))
         }
-        console.log(this._accessibleEdges)
         tileToAdd.setOriginalConnects(edges)
         return true
     }
@@ -660,13 +656,16 @@ class GBoard extends GTile{
             this._pattern.addChild(connLines)
             this._pattern.addChild(gSegment)
         })
-        this._frame.rotate(-45)
-
         this._edges = this._frameTop.getChildren().concat(this._frameBot.getChildren())
         this._accessibleEdges = this._edges.slice()
         this._edges.forEach(edge => {
             this._base.add(edge.getSegments()[0])
         })
+
+        this._frameTop.insertChild(0, this._frameBot.getLastChild())
+        this._frameBot.insertChild(0, this._frameTop.getLastChild())
+        this._frameTop.removeChildren(5)
+        this._frameBot.removeChildren(5)
 
         this._slots = {}
         this._slotGroup = new Group()
@@ -683,10 +682,7 @@ class GBoard extends GTile{
 
         let eLen = edges.length
         for(let c = 0; c < eLen; c++) {
-            this._accessibleEdges[edges[c].b].canAccess = false
-            gTile.getEdges()[edges[c].t].canAccess = false
-
-            this._accessibleEdges.splice(edges[c].b-1, 1, ...tileEdges.slice(edges[c].t+1,
+            this._accessibleEdges.splice(edges[c].b, 1, ...tileEdges.slice(edges[c].t+1,
                 (edges[c].t < edges[(c+1)%eLen].t) ? edges[(c+1)%eLen].t : edges[(c+1)%eLen].t+tileEdges.length/2))
         }
         this._tileGroup.addChild(gTile._graphics)
@@ -708,7 +704,7 @@ class GBoard extends GTile{
         for(let c = 0; c < bEdges.length; c++) {
             for(let c1 = 0; c1 < tEdges.length; c1++) {
                 if(tEdges[c1].hasConnect() == bEdges[c].hasConnect() && (tEdges[c1].getOrientation() + bEdges[c].getOrientation()) == 7){
-                    let slotPosition = this._accessibleEdges[(c+1)%this._accessibleEdges.length].position.add(gTile.getCenter().subtract(gTile.getEdges()[c1].position))
+                    let slotPosition = this._accessibleEdges[(c)%this._accessibleEdges.length].position.add(gTile.getCenter().subtract(gTile.getEdges()[c1].position))
                     this.generateSlot(gTile, slotPosition, {t:c1, b:c})
                 }
             }
@@ -815,14 +811,15 @@ class GameGraphics extends LocalEventEmitter{
     }
 
     updateSqrStack(sqrStack, edgePairs) {
-        console.log(sqrStack.length, this._gSqrStack.length)
         if(sqrStack[sqrStack.length-1] == this._gSqrStack[this._gSqrStack.length-1]._parentTile) return
 
         this._gBoard.addGTile(this._gSqrStack.shift(), edgePairs)
         this._gSqrStack.forEach(sqr => {
             sqr.setPosition(sqr.getBase().getPosition().subtract(new Point(5,25)))
         })
-        this._gSqrStack.push(new GSqrTile(sqrStack[2], {x:view.size.width-260, y:view.size.height-250}, this._friendlyColor))
+        this._gSqrStack.push(new GSqrTile(sqrStack[2], {x:view.size.width-240, y:view.size.height-150}, this._friendlyColor))
+        this._gSqrStack[2].toBack()
+        this._installGTileListeners(this._gSqrStack[this._gSqrStack.length-1])
     }
 
     updateHexStack(hexStack, edgePairs) {
@@ -832,7 +829,9 @@ class GameGraphics extends LocalEventEmitter{
         this._gHexStack.forEach(hex => {
             hex.setPosition(hex.getBase().getPosition().subtract(new Point(5,25)))
         })
-        this._gHexStack.push(new GHexTile(hexStack[2], {x:view.size.width-110, y:view.size.height-250}, this._hostileColor))
+        this._gHexStack.push(new GHexTile(hexStack[2], {x:view.size.width-90, y:view.size.height-150}, this._hostileColor))
+        this._gHexStack[2].toBack()
+        this._installGTileListeners(this._gHexStack[this._gHexStack.length-1])
     }
 
     _installGTileListeners(stackTile) {
