@@ -290,11 +290,13 @@ class GTile {
         this._frame.fillColor = teamColor.getBaseColor()
         this._frame.strokeWidth = frameWidth
         this._frame.strokeCap = "round"
+        this._frame.strokeJoin = "round"
 
         this._pattern = new CompoundPath()
         this._pattern.strokeColor = teamColor.getPathColor()
         this._pattern.strokeWidth = 4
         this._pattern.strokeCap = "round"
+        this._pattern.strokeJoin = "round"
 
         this._graphics = new Group([this._base,this._frame,this._pattern])
 
@@ -503,8 +505,8 @@ class GHexTile extends GTile {
         for(let i = -0.5, h = -1.5; i < 2; i++, h++) {
             this._frameTop.addChild(new Path([center.x+(1-Math.trunc(Math.abs(h)))*(tileWidth/2), center.y+ Math.sign(h)*(tileSideLength/2) + Math.trunc(h)*(tileWidth/2)],
                                             [center.x+(1-Math.trunc(Math.abs(i)))*(tileWidth/2), center.y+ Math.sign(i)*(tileSideLength/2) + Math.trunc(i)*(tileWidth/2)]))
-            this._frameBot.addChild(new Path([center.x-(1-Math.trunc(Math.abs(h)))*(tileWidth/2)+1, center.y+ Math.sign(h)*(tileSideLength/2) + Math.trunc(h)*(tileWidth/2)],
-                                            [center.x-(1-Math.trunc(Math.abs(i)))*(tileWidth/2)+1, center.y+ Math.sign(i)*(tileSideLength/2) + Math.trunc(i)*(tileWidth/2)]))
+            this._frameBot.addChild(new Path([center.x-(1-Math.trunc(Math.abs(h)))*(tileWidth/2), center.y+ Math.sign(h)*(tileSideLength/2) + Math.trunc(h)*(tileWidth/2)],
+                                            [center.x-(1-Math.trunc(Math.abs(i)))*(tileWidth/2), center.y+ Math.sign(i)*(tileSideLength/2) + Math.trunc(i)*(tileWidth/2)]))
         }
         this._edges = this._frameTop.getChildren().concat(this._frameBot.getChildren().slice().reverse())
 
@@ -684,8 +686,11 @@ class GBoard extends GTile{
         for(let c = 0; c < eLen; c++) {
             this._accessibleEdges.splice(edges[c].b, 1, ...tileEdges.slice(edges[c].t+1,
                 (edges[c].t < edges[(c+1)%eLen].t) ? edges[(c+1)%eLen].t : edges[(c+1)%eLen].t+tileEdges.length/2))
+            
         }
         this._tileGroup.addChild(gTile._graphics)
+        this.toBack()
+        this.removeSlots()
         return true
     }
 
@@ -704,7 +709,8 @@ class GBoard extends GTile{
         for(let c = 0; c < bEdges.length; c++) {
             for(let c1 = 0; c1 < tEdges.length; c1++) {
                 if(tEdges[c1].hasConnect() == bEdges[c].hasConnect() && (tEdges[c1].getOrientation() + bEdges[c].getOrientation()) == 7){
-                    let slotPosition = this._accessibleEdges[(c)%this._accessibleEdges.length].position.add(gTile.getCenter().subtract(gTile.getEdges()[c1].position))
+                    let offset = gTile.getCenter().subtract(gTile.getEdges()[c1].position)
+                    let slotPosition = this._accessibleEdges[(c)%this._accessibleEdges.length].position.add(offset)
                     this.generateSlot(gTile, slotPosition, {t:c1, b:c})
                 }
             }
@@ -721,8 +727,16 @@ class GBoard extends GTile{
             slot.fillColor = "rgba(255,255,255,0.2)"
             slot.strokeColor = "rgba(255,255,255,0.3)"
             slot.strokeWidth = frameWidth
+            slot.strokeCap = "round"
+            slot.strokeJoin = "round"
             slot.setPosition(position)
-            this._slotGroup.addChild(slot)
+
+            let collides = false
+            /*this._accessibleEdges.forEach(edge => {
+                if(edge.intersects(slot)&&) collides = true
+            })*/
+            if(!collides) this._slotGroup.addChild(slot)
+            else slot.remove()
         }
     }
 }
