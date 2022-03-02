@@ -1,5 +1,8 @@
-let tileSideLength = 40                                     // All of the tiles should have the same side length
+let sqrSideLength = 40                                     // All of the tiles should have the same side length
 let frameWidth = 3
+let hexSideLength = sqrSideLength+0.5*frameWidth*(1-Math.tan(22.5*Math.PI/180))          //but the frame breaks everything, so that‘s why here are tile-specific side length
+let octSideLength = sqrSideLength+frameWidth*(1-Math.tan(22.5*Math.PI/180))
+let hexConnectOffset = (octSideLength-hexSideLength)/2     //Due to the upper and lower Edges of the hex tiles having different angles at each corner, the connect is not the center
 let canvas = document.getElementById("someGeometryGame")
 let debug = false
 document.body.style.background = "rgb(101, 104, 121)";
@@ -449,12 +452,13 @@ class GSqrTile extends GTile {
         this._parentTile = sqrTile
         
         for(let i = 0, h = -1; i < 2; i++, h++) {
-            this._frameTop.addChild(new Path(new Point(center.x+ (i**i) * (tileSideLength/2), center.y- ((-i)**(-i)) * (tileSideLength/2)), new Point(center.x+ (h**h) * (tileSideLength/2), center.y- ((-h)**(-h)) * (tileSideLength/2))))
-            this._frameBot.addChild(new Path(new Point(center.x- (i**i) * (tileSideLength/2), center.y+ ((-i)**(-i)) * (tileSideLength/2)), new Point(center.x- (h**h) * (tileSideLength/2), center.y+ ((-h)**(-h)) * (tileSideLength/2))))
+            this._frameTop.addChild(new Path(new Point(center.x+ (i**i) * (sqrSideLength/2), center.y- ((-i)**(-i)) * (sqrSideLength/2)), new Point(center.x+ (h**h) * (sqrSideLength/2), center.y- ((-h)**(-h)) * (sqrSideLength/2))))
+            this._frameBot.addChild(new Path(new Point(center.x- (i**i) * (sqrSideLength/2), center.y+ ((-i)**(-i)) * (sqrSideLength/2)), new Point(center.x- (h**h) * (sqrSideLength/2), center.y+ ((-h)**(-h)) * (sqrSideLength/2))))
         }
         
         this._edges = this._frameTop.getChildren().concat(this._frameBot.getChildren())
         this._edges.forEach(edge => {
+            edge.getConnect = () => {return edge.position}
             this._base.add(edge.getSegments()[0])
         })
 
@@ -500,13 +504,32 @@ class GHexTile extends GTile {
         super(color, "hex")
 
         this._parentTile = hexTile
-        let tileWidth =  Math.sqrt(2*tileSideLength**2)
+        let tileWidth =  Math.sqrt(2*hexSideLength**2)
 
         for(let i = -0.5, h = -1.5; i < 2; i++, h++) {
-            this._frameTop.addChild(new Path([center.x+(1-Math.trunc(Math.abs(h)))*(tileWidth/2), center.y+ Math.sign(h)*(tileSideLength/2) + Math.trunc(h)*(tileWidth/2)],
-                                            [center.x+(1-Math.trunc(Math.abs(i)))*(tileWidth/2), center.y+ Math.sign(i)*(tileSideLength/2) + Math.trunc(i)*(tileWidth/2)]))
-            this._frameBot.addChild(new Path([center.x-(1-Math.trunc(Math.abs(h)))*(tileWidth/2), center.y+ Math.sign(h)*(tileSideLength/2) + Math.trunc(h)*(tileWidth/2)],
-                                            [center.x-(1-Math.trunc(Math.abs(i)))*(tileWidth/2), center.y+ Math.sign(i)*(tileSideLength/2) + Math.trunc(i)*(tileWidth/2)]))
+            let top = new Path([center.x+(1-Math.trunc(Math.abs(h)))*(tileWidth/2), center.y+ Math.sign(h)*(octSideLength/2) + Math.trunc(h)*(tileWidth/2)],
+                                [center.x+(1-Math.trunc(Math.abs(i)))*(tileWidth/2), center.y+ Math.sign(i)*(octSideLength/2) + Math.trunc(i)*(tileWidth/2)])
+            let bot = new Path([center.x-(1-Math.trunc(Math.abs(h)))*(tileWidth/2), center.y+ Math.sign(h)*(octSideLength/2) + Math.trunc(h)*(tileWidth/2)],
+                                [center.x-(1-Math.trunc(Math.abs(i)))*(tileWidth/2), center.y+ Math.sign(i)*(octSideLength/2) + Math.trunc(i)*(tileWidth/2)])
+            this._frameTop.addChild(top)
+            this._frameBot.addChild(bot)
+            if(Math.abs(h+0.5) == 1) {
+                bot.getConnect = () => {
+                    let vector = bot.lastSegment.point.subtract(bot.firstSegment.point);
+                    let ratio = vector.x**2/vector.length**2;
+                    let offset = new Point((h+0.5)*Math.sign(vector.x)*Math.sqrt(hexConnectOffset**2*ratio), (h+0.5)*Math.sign(vector.y)*Math.sqrt(hexConnectOffset**2*(1-ratio)));
+                    return bot.position.add(offset)
+                }
+                top.getConnect = () => {
+                    let vector = top.lastSegment.point.subtract(top.firstSegment.point);
+                    let ratio = vector.x**2/vector.length**2;
+                    let offset = new Point((h+0.5)*Math.sign(vector.x)*Math.sqrt(hexConnectOffset**2*ratio), (h+0.5)*Math.sign(vector.y)*Math.sqrt(hexConnectOffset**2*(1-ratio)));
+                    return top.position.add(offset)
+                }
+            } else {
+                bot.getConnect = () => {return bot.position}
+                top.getConnect = () => {return top.position}
+            }
         }
         this._edges = this._frameTop.getChildren().concat(this._frameBot.getChildren().slice().reverse())
 
@@ -522,13 +545,13 @@ class GHexTile extends GTile {
         let zoneConnect = new CompoundPath()
         hexTile.getSegments().forEach((segment) => {
             let hexSegment = new CompoundPath()
-            let formerCenterConnect = new Point(center.x, center.y+ (tileSideLength/2) * ((segment.getEnds()[0].getOrientation()-1)%3 -1))
+            let formerCenterConnect = new Point(center.x, center.y+ (sqrSideLength/2) * ((segment.getEnds()[0].getOrientation()-1)%3 -1))
             segment.getEnds().forEach(edge => {
                 let o = edge.getOrientation()
                 let relevantFramePart = this._frame.getChildren()[Math.floor(o/4)].getChildren()
-                let centerConnect = new Point(center.x, center.y+ (tileSideLength/2) * ((o-1)%3 -1))
+                let centerConnect = new Point(center.x, center.y+ (sqrSideLength/2) * ((o-1)%3 -1))
                 if(centerConnect != formerCenterConnect) zoneConnect.addChild(new Path(centerConnect, formerCenterConnect))
-                let edgeCenter = relevantFramePart[(o-1)%3].position
+                let edgeCenter = relevantFramePart[(o-1)%3].getConnect()
 
                 hexSegment.addChild(new Path(centerConnect, edgeCenter))
             })
@@ -567,18 +590,26 @@ class GBoard extends GTile{
         this._board = board
 
         let center = new Point(view.size.width/2, view.size.height/2)
-        let tileWidth =  Math.sqrt(2*tileSideLength**2)
+        let tileWidth =  Math.sqrt(2*octSideLength**2)
         let midOccupied = false
-        let tsl05 = tileSideLength * 0.5
+        let tsl05 = octSideLength * 0.5
 
         for(let i = -0.5, h = -1.5; i < 2; i++, h++) {
-            this._frameTop.addChild(new Path([center.x+(1-Math.trunc(Math.abs(h)))*(tileWidth/2)+tsl05, center.y+ Math.sign(h)*(tileSideLength/2) + Math.trunc(h)*(tileWidth/2)],
-                                            [center.x+(1-Math.trunc(Math.abs(i)))*(tileWidth/2)+tsl05, center.y+ Math.sign(i)*(tileSideLength/2) + Math.trunc(i)*(tileWidth/2)]))
-            this._frameBot.addChild(new Path([center.x-(1-Math.trunc(Math.abs(h)))*(tileWidth/2)+1-tsl05, center.y- Math.sign(h)*(tileSideLength/2) - Math.trunc(h)*(tileWidth/2)],
-                                            [center.x-(1-Math.trunc(Math.abs(i)))*(tileWidth/2)+1-tsl05, center.y- Math.sign(i)*(tileSideLength/2) - Math.trunc(i)*(tileWidth/2)]))
+            let top = new Path([center.x+(1-Math.trunc(Math.abs(h)))*(tileWidth/2)+tsl05, center.y+ Math.sign(h)*(octSideLength/2) + Math.trunc(h)*(tileWidth/2)],
+                                            [center.x+(1-Math.trunc(Math.abs(i)))*(tileWidth/2)+tsl05, center.y+ Math.sign(i)*(octSideLength/2) + Math.trunc(i)*(tileWidth/2)])
+            let bot = new Path([center.x-(1-Math.trunc(Math.abs(h)))*(tileWidth/2)-tsl05, center.y- Math.sign(h)*(octSideLength/2) - Math.trunc(h)*(tileWidth/2)],
+                                            [center.x-(1-Math.trunc(Math.abs(i)))*(tileWidth/2)-tsl05, center.y- Math.sign(i)*(octSideLength/2) - Math.trunc(i)*(tileWidth/2)])
+            this._frameTop.addChild(top)
+            this._frameBot.addChild(bot)
+            top.getConnect = () => {return top.position}
+            bot.getConnect = () => {return bot.position}
         }
-        this._frameTop.insertChild(0, new Path(this._frameBot.getLastChild().getLastSegment(),this._frameTop.getFirstChild().getFirstSegment()))
-        this._frameBot.insertChild(0, new Path(this._frameTop.getLastChild().getLastSegment(),this._frameBot.getFirstChild().getFirstSegment()))
+        let top = new Path(this._frameBot.getLastChild().getLastSegment(),this._frameTop.getFirstChild().getFirstSegment())
+        let bot = new Path(this._frameTop.getLastChild().getLastSegment(),this._frameBot.getFirstChild().getFirstSegment())
+        this._frameTop.insertChild(0, top)
+        this._frameBot.insertChild(0, bot)
+        top.getConnect = () => {return top.position}
+        bot.getConnect = () => {return bot.position}
 
         this._board.getPathways().forEach(p => {
             let sEnds = p.getSegments()[0].getEnds()
@@ -680,6 +711,7 @@ class GBoard extends GTile{
         let tileEdges = gTile.getEdges().slice()
         tileEdges = tileEdges.concat(tileEdges)
 
+        console.log(edges.length)
         this._edges.push(...gTile.getEdges())
 
         let eLen = edges.length
@@ -689,6 +721,7 @@ class GBoard extends GTile{
             
         }
         this._tileGroup.addChild(gTile._graphics)
+        console.log(this._accessibleEdges)
         this.toBack()
         this.removeSlots()
         return true
@@ -709,8 +742,22 @@ class GBoard extends GTile{
         for(let c = 0; c < bEdges.length; c++) {
             for(let c1 = 0; c1 < tEdges.length; c1++) {
                 if(tEdges[c1].hasConnect() == bEdges[c].hasConnect() && (tEdges[c1].getOrientation() + bEdges[c].getOrientation()) == 7){
-                    let offset = gTile.getCenter().subtract(gTile.getEdges()[c1].position)
-                    let slotPosition = this._accessibleEdges[(c)%this._accessibleEdges.length].position.add(offset)
+                    let offset = gTile.getCenter().subtract(gTile.getEdges()[c1].getConnect()), absX = Math.abs(offset.x), absY=Math.abs(offset.y)
+
+                    //console.log(offset.x**2/offset.length**2, offset.y**2/offset.length**2)
+                    if(tEdges[c1].isDiagonal()){
+                        let frameWidthParts = Math.sqrt(frameWidth**2/2);
+                        offset.x +=frameWidthParts*Math.sign(offset.x)
+                        offset.y +=frameWidthParts*Math.sign(offset.y)
+                    } else {
+                        if(absX>absY) {
+                            offset.x = offset.x+absX*(frameWidth/offset.x)
+                        } else {
+                            offset.y = offset.y+absY*(frameWidth/offset.y)
+                        }
+                    }
+
+                    let slotPosition = this._accessibleEdges[(c)%this._accessibleEdges.length].getConnect().add(offset)
                     this.generateSlot(gTile, slotPosition, {t:c1, b:c})
                 }
             }
@@ -719,7 +766,7 @@ class GBoard extends GTile{
     }
 
     generateSlot(gTile, position, edges) {
-        (this._slots[`${position.x}/${position.y}`] || (this._slots[`${position.x}/${position.y}`] = [])).push(edges)
+        (this._slots[`${position.x}/${position.y}`] ?? (this._slots[`${position.x}/${position.y}`] = [])).push(edges)
         if(this._slots[`${position.x}/${position.y}`].length == 1) {
             let slot = new Path()
             slot.edges = [edges]
@@ -732,9 +779,9 @@ class GBoard extends GTile{
             slot.setPosition(position)
 
             let collides = false
-            /*this._accessibleEdges.forEach(edge => {
-                if(edge.intersects(slot)&&) collides = true
-            })*/
+            this._accessibleEdges.forEach(edge => {
+                if(edge.intersects(slot)) collides = true
+            })
             if(!collides) this._slotGroup.addChild(slot)
             else slot.remove()
         }
