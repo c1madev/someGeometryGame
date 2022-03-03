@@ -523,7 +523,7 @@ class GHexTile extends GTile {
                 top.getConnect = () => {
                     let vector = top.lastSegment.point.subtract(top.firstSegment.point);
                     let ratio = vector.x**2/vector.length**2;
-                    let offset = new Point((h+0.5)*Math.sign(vector.x)*Math.sqrt(hexConnectOffset**2*ratio), (h+0.5)*Math.sign(vector.y)*Math.sqrt(hexConnectOffset**2*(1-ratio)));
+                    let offset = new Point(-(h+0.5)*Math.sign(vector.x)*Math.sqrt(hexConnectOffset**2*ratio), -(h+0.5)*Math.sign(vector.y)*Math.sqrt(hexConnectOffset**2*(1-ratio)));
                     return top.position.add(offset)
                 }
             } else {
@@ -531,6 +531,8 @@ class GHexTile extends GTile {
                 top.getConnect = () => {return top.position}
             }
         }
+        this._frameTop.reverse(); //in order for the collision checks later on to work properly
+
         this._edges = this._frameTop.getChildren().concat(this._frameBot.getChildren().slice().reverse())
 
         let baseTop = new Path(this._frameTop.getChildren()[0].getSegments()[0])
@@ -545,11 +547,11 @@ class GHexTile extends GTile {
         let zoneConnect = new CompoundPath()
         hexTile.getSegments().forEach((segment) => {
             let hexSegment = new CompoundPath()
-            let formerCenterConnect = new Point(center.x, center.y+ (sqrSideLength/2) * ((segment.getEnds()[0].getOrientation()-1)%3 -1))
+            let formerCenterConnect = new Point(center.x, center.y+ (octSideLength/2) * ((segment.getEnds()[0].getOrientation()-1)%3 -1))
             segment.getEnds().forEach(edge => {
                 let o = edge.getOrientation()
                 let relevantFramePart = this._frame.getChildren()[Math.floor(o/4)].getChildren()
-                let centerConnect = new Point(center.x, center.y+ (sqrSideLength/2) * ((o-1)%3 -1))
+                let centerConnect = new Point(center.x, center.y+ (octSideLength/2) * ((o-1)%3 -1))
                 if(centerConnect != formerCenterConnect) zoneConnect.addChild(new Path(centerConnect, formerCenterConnect))
                 let edgeCenter = relevantFramePart[(o-1)%3].getConnect()
 
@@ -558,6 +560,7 @@ class GHexTile extends GTile {
             hexSegment.addChild(zoneConnect)
             this._pattern.addChild(hexSegment)
         })
+
         this._frameTop.children.unshift(this._frameBot.children.shift())
         this._frameBot.children.push(this._frameTop.children.pop())
     }
@@ -610,6 +613,9 @@ class GBoard extends GTile{
         this._frameBot.insertChild(0, bot)
         top.getConnect = () => {return top.position}
         bot.getConnect = () => {return bot.position}
+
+        this._frameTop.reverse()
+        this._frameBot.reverse()
 
         this._board.getPathways().forEach(p => {
             let sEnds = p.getSegments()[0].getEnds()
@@ -711,8 +717,9 @@ class GBoard extends GTile{
         let tileEdges = gTile.getEdges().slice()
         tileEdges = tileEdges.concat(tileEdges)
 
-        console.log(edges.length)
         this._edges.push(...gTile.getEdges())
+        
+        console.log(this._testSurroundingEdges(gTile))
 
         let eLen = edges.length
         for(let c = 0; c < eLen; c++) {
@@ -720,11 +727,66 @@ class GBoard extends GTile{
                 (edges[c].t < edges[(c+1)%eLen].t) ? edges[(c+1)%eLen].t : edges[(c+1)%eLen].t+tileEdges.length/2))
             
         }
+
         this._tileGroup.addChild(gTile._graphics)
-        console.log(this._accessibleEdges)
         this.toBack()
         this.removeSlots()
         return true
+    }
+
+    _testSurroundingEdges(gTile) {
+        let invalidEdges = [];
+        let connectEdges = [];
+        let result = {invalidEdges: invalidEdges, connectEdges: connectEdges};
+        this._accessibleEdges.forEach(edge => {
+            let testPath = new Path.Rectangle(new Point(0,0), sqrSideLength-1); testPath.applyMatrix = false;
+            let vector = edge.lastSegment.point.subtract(edge.firstSegment.point);
+            let ratio = Math.round((vector.x**2/vector.length**2)*10)/10;
+            let offset = new Point(Math.sign(-vector.y)*Math.sqrt(( (sqrSideLength+frameWidth)/2)**2*(1-ratio)), Math.sign(vector.x)*Math.sqrt(( (sqrSideLength+frameWidth)/2)**2*ratio));
+            let testPoint = edge.getConnect().add(offset);
+            testPath.position = testPoint;
+            if(ratio%1 != Math.abs(Math.round(testPath.rotation/9)/10)%1) testPath.rotate(45)
+            
+            gTile.getEdges().forEach(tEdge => {
+                if(tEdge.intersects(testPath)) {
+                    if(Math.round(new Path([tEdge.getConnect(), edge.getConnect()]).length) > frameWidth) {
+                        testPath.fillColor = "rgba(0,255,0,0.25)"
+                        if(!invalidEdges.includes(edge)) invalidEdges.push(edge);
+                        let mark = new Path.Rectangle(edge.getConnect(), 10);
+                        mark.bringToFront();
+                        mark.fillColor="green";
+
+                    } else {
+                        connectEdges.push(edge);
+                    }
+                }
+            })
+            testPath.bringToFront()
+        })
+        gTile.getEdges().forEach(edge => {
+            let testPath = new Path.Rectangle(new Point(0,0), sqrSideLength-1); testPath.applyMatrix = false;
+            let vector = edge.lastSegment.point.subtract(edge.firstSegment.point);
+            let ratio = Math.round((vector.x**2/vector.length**2)*10)/10;
+            let offset = new Point(Math.sign(-vector.y)*Math.sqrt(( (sqrSideLength+frameWidth)/2)**2*(1-ratio)), Math.sign(vector.x)*Math.sqrt(( (sqrSideLength+frameWidth)/2)**2*ratio));
+            let testPoint = edge.getConnect().add(offset);
+            testPath.position = testPoint;
+            if(ratio%1 != (Math.round(testPath.rotation/9)/10)%1) testPath.rotate(45)
+
+            this._accessibleEdges.forEach(bEdge => {
+                if(bEdge.intersects(testPath)) {
+                    if(Math.round(new Path([bEdge.getConnect(), edge.getConnect()]).length) > frameWidth) {
+                        testPath.fillColor = "rgba(255,0,0,0.25)"
+                        if(!invalidEdges.includes(edge)) invalidEdges.push(edge);
+                        let mark = new Path.Rectangle(edge.getConnect(), 10);
+                        mark.bringToFront()
+                        mark.fillColor="red";
+
+                    }
+                }
+            })
+            testPath.bringToFront()
+        })
+        return result;
     }
 
     removeSlots() {
@@ -744,7 +806,6 @@ class GBoard extends GTile{
                 if(tEdges[c1].hasConnect() == bEdges[c].hasConnect() && (tEdges[c1].getOrientation() + bEdges[c].getOrientation()) == 7){
                     let offset = gTile.getCenter().subtract(gTile.getEdges()[c1].getConnect()), absX = Math.abs(offset.x), absY=Math.abs(offset.y)
 
-                    //console.log(offset.x**2/offset.length**2, offset.y**2/offset.length**2)
                     if(tEdges[c1].isDiagonal()){
                         let frameWidthParts = Math.sqrt(frameWidth**2/2);
                         offset.x +=frameWidthParts*Math.sign(offset.x)
@@ -766,24 +827,28 @@ class GBoard extends GTile{
     }
 
     generateSlot(gTile, position, edges) {
-        (this._slots[`${position.x}/${position.y}`] ?? (this._slots[`${position.x}/${position.y}`] = [])).push(edges)
-        if(this._slots[`${position.x}/${position.y}`].length == 1) {
-            let slot = new Path()
-            slot.edges = [edges]
-            slot.copyContent(gTile.getBase())
-            slot.fillColor = "rgba(255,255,255,0.2)"
-            slot.strokeColor = "rgba(255,255,255,0.3)"
-            slot.strokeWidth = frameWidth
-            slot.strokeCap = "round"
-            slot.strokeJoin = "round"
-            slot.setPosition(position)
+        (this._slots[`${position.x}/${position.y}`] = []).push(edges)
+        let slot = new Path()
+        slot.edges = [edges]
+        slot.copyContent(gTile.getBase())
+        slot.fillColor = "rgba(255,255,255,0.2)"
+        slot.strokeColor = "rgba(255,255,255,0.3)"
+        slot.strokeWidth = frameWidth
+        slot.strokeCap = "round"
+        slot.strokeJoin = "round"
+        slot.setPosition(position)
 
-            let collides = false
-            this._accessibleEdges.forEach(edge => {
-                if(edge.intersects(slot)) collides = true
-            })
-            if(!collides) this._slotGroup.addChild(slot)
-            else slot.remove()
+        let collides = false
+        this._accessibleEdges.forEach(edge => {
+            if(edge.intersects(slot)) collides = true
+        })
+        if(!collides) {
+            this._slotGroup.addChild(slot)
+            return true
+        }
+        else {
+            slot.remove()
+            return false
         }
     }
 }
@@ -878,7 +943,7 @@ class GameGraphics extends LocalEventEmitter{
         this._gSqrStack.forEach(sqr => {
             sqr.setPosition(sqr.getBase().getPosition().subtract(new Point(5,25)))
         })
-        this._gSqrStack.push(new GSqrTile(sqrStack[2], {x:view.size.width-240, y:view.size.height-150}, this._friendlyColor))
+        this._gSqrStack.push(new GSqrTile(sqrStack[2], {x:view.size.width-240, y:view.size.height-150}, this._hostileColor))
         this._gSqrStack[2].toBack()
         this._installGTileListeners(this._gSqrStack[this._gSqrStack.length-1])
     }
@@ -890,7 +955,7 @@ class GameGraphics extends LocalEventEmitter{
         this._gHexStack.forEach(hex => {
             hex.setPosition(hex.getBase().getPosition().subtract(new Point(5,25)))
         })
-        this._gHexStack.push(new GHexTile(hexStack[2], {x:view.size.width-90, y:view.size.height-150}, this._hostileColor))
+        this._gHexStack.push(new GHexTile(hexStack[2], {x:view.size.width-90, y:view.size.height-150}, this._friendlyColor))
         this._gHexStack[2].toBack()
         this._installGTileListeners(this._gHexStack[this._gHexStack.length-1])
     }
