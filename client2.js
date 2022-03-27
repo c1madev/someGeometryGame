@@ -1,10 +1,10 @@
-let sqrSideLength = 40                                     // All of the tiles should have the same side length
-let frameWidth = 3
-let hexSideLength = sqrSideLength+0.5*frameWidth*(1-Math.tan(22.5*Math.PI/180))          //but the frame breaks everything, so that‘s why here are tile-specific side length
-let octSideLength = sqrSideLength+frameWidth*(1-Math.tan(22.5*Math.PI/180))
-let hexConnectOffset = (octSideLength-hexSideLength)/2     //Due to the upper and lower Edges of the hex tiles having different angles at each corner, the connect is not the center
-let canvas = document.getElementById("someGeometryGame")
-let debug = false
+let sqrSideLength = 60;                                     // All of the tiles should have the same side length
+let frameWidth = 4;
+let hexSideLength = sqrSideLength+0.5*frameWidth*(1-Math.tan(22.5*Math.PI/180));          //but the frame breaks everything, so that‘s why here are tile-specific side length
+let octSideLength = sqrSideLength+frameWidth*(1-Math.tan(22.5*Math.PI/180));
+let hexConnectOffset = (octSideLength-hexSideLength)/2;     //Due to the upper and lower Edges of the hex tiles having different angles at each corner, the connect is not the center
+let canvas = document.getElementById("someGeometryGame");
+let debug = false;
 document.body.style.background = "rgb(101, 104, 121)";
 
 window.addEventListener("resize", function(){
@@ -31,85 +31,100 @@ class LocalEventEmitter {
     }
 }
 
-
 // model
 class TileEdge {
-    constructor(hasConnect, rotationLeft) {
-        this._orientation = 0
-        this.rotate(rotationLeft)
-        this._hasConnect = hasConnect
-        this.canAccess = true
-        this.isConnected = false
-        this.parentTile = null
+    constructor(hasConnect, rotationClockwise) {
+        this.position = null;
+
+        this._orientation = 0;
+        this.rotate(rotationClockwise);
+        
+        this._hasConnect = hasConnect;
+        this.canAccess = true;
+        this.isConnected = false;
+        
+        this.parentTile = null;
+    }
+
+    _calculateStartPoint() {
+        let n = Math.abs(Math.trunc(this._orientation-3.5));
+        let pointX = ( ((n+1)%2)*Math.sqrt(2) + Math.floor(n/3) )*Math.sign(this._orientation-3.5);
+        let pointY = ( ((n+1)%2)*Math.sqrt(2)*Math.sign(n-1) + Math.floor(n/3) )*Math.sign(this._orientation-3.5);
+        
+        return new Point(pointX, pointY)+(this.position ?? {x:0,y:0});
     }
 
     getOrientation() {
-        return this._orientation
+        return this._orientation;
+    }
+
+    getEnds() {
+        let startPoint = _calculateStartPoint();
+        let endPoint = startPoint.multiply(-1);
+        return {start:startPoint, end:endPoint};
     }
 
     hasConnect() {
-        return this._hasConnect
+        return this._hasConnect;
     }
 
     isDiagonal() {
-        return (this._orientation ==4 || (this._orientation%5)%2 == 1)
-    }
-
-    getOrientation() {
-        return this._orientation
+        return (this._orientation ==4 || (this._orientation%5)%2 == 1);
     }
 
     rotate(rotateBy) {
-        let functionX = (((rotateBy)%8)+8)%8        // breaking down every Input to be positive and < 8
-		functionX += Math.abs(this._orientation-Math.floor((this._orientation/8)+0.5)*8) + Math.floor((this._orientation%8)/4)*3 // finding the correct offset for function
-        this._orientation = Math.abs(functionX-Math.floor((functionX/8)+0.5)*8) + Math.floor((functionX%8)/4)*3
+        let functionX = (((rotateBy)%8)+8)%8;        // breaking down every Input to be positive and < 8
+		functionX += Math.abs(this._orientation-Math.floor((this._orientation/8)+0.5)*8) + Math.floor((this._orientation%8)/4)*3; // finding the correct offset for function
+        this._orientation = Math.abs(functionX-Math.floor((functionX/8)+0.5)*8) + Math.floor((functionX%8)/4)*3;
     }
 }
 
 class Segment {
     constructor(ends) {
-        this._ends = ends
-        this.open = true
-        this.parentTile = null
+        this._ends = ends;
+        this.open = true;
+        this.parentTile = null;
     }
     
     getEnds() {
-        return this._ends
+        return this._ends;
     }
 
-    boardSort(board) {
-        let bEdges = board.getEdges()
-        let length = this._ends.length
+    sort(tile) { // sorts segment edges so the largest Gap between two segment edges is always between the first and last edges
+        let bEdges = tile.getEdges();
+        let length = this._ends.length;
         if(length != 1) {
             let d = 8+bEdges.indexOf(this._ends[0]) - bEdges.indexOf(this._ends[length-1]), iSplice = 0;
-            for(let c = 1, i = bEdges.indexOf(this._ends[0]), iPlus1 /* = bEdges.indexOf(this._ends[1])*/; c < length; c++) {
-                iPlus1 = bEdges.indexOf(this._ends[c])
+            for(let c = 1, i = bEdges.indexOf(this._ends[0]), iPlus1; c < length; c++) {
+                iPlus1 = bEdges.indexOf(this._ends[c]);
                 if(iPlus1 - i > d) {
                     d = iPlus1-i;
                     iSplice = c;
                 }
-                i = iPlus1
+                i = iPlus1;
             }
-            let sortedEnds = this._ends.splice(iSplice)
-            this._ends = sortedEnds.concat(this._ends)
+            let sortedEnds = this._ends.splice(iSplice);
+            this._ends = sortedEnds.concat(this._ends);
         }
     }
 }
 
+// temporarily finished
+
 class Pathway {
     constructor(firstSegment) {
-        this._segments = []
-        this._segments.push(firstSegment)
-        this._openEnds = []
-        this._openEnds.push(this._segments[0].getEnds())
+        this._segments = [];
+        this._segments.push(firstSegment);
+        this._openEnds = [];
+        this._openEnds.push(this._segments[0].getEnds());
     }
 
     getSegments() {
-        return this._segments
+        return this._segments;
     }
 
     getOpenEnds() {
-        return this._openEnds
+        return this._openEnds;
     }
 
     getSegmentEnds() { //necessary?
@@ -118,75 +133,120 @@ class Pathway {
             ends.push(segment.getEnds())
         })
     }
+
+    addSegment() {
+        // tbd
+    }
+
+    mergePathway() {
+        // tbd
+    }
 }
+
+// controlled correct
 
 class Tile{
     constructor(edges, pathSegments) {
-        this._edges = edges
+        this._position = new Point(0,0);
+
+        this._edges = edges;
         this._edges.forEach(edge => {
-            edge.parentTile = this
+            edge.parentTile = this;
         })
 
-        this._pathSegments = []
+        this._pathSegments = [];
         for(let x = 0; x < pathSegments.length; x++) {
-            let segmentEnds = []
+            let segmentEnds = [];
             pathSegments[x].forEach(edge => {
-                if(this._edges.indexOf(edge) != -1) segmentEnds.push(edge)
+                if(this._edges.indexOf(edge) != -1) segmentEnds.push(edge);
             })
-            this._pathSegments.push(new Segment(segmentEnds))
-            this._pathSegments[this._pathSegments.length-1].parentTile = this
+            this._pathSegments.push(new Segment(segmentEnds));
+            this._pathSegments[this._pathSegments.length-1].parentTile = this; //redundant?
         }
-        this._originalConnects = null
+        this._originalConnects = null;
     }
 
-    getEdges = () => {
-        return this._edges
+    getPosition() {
+        return this._position;
     }
 
-    getSegments = () => {
-        return this._pathSegments
+    getEdges() {
+        return this._edges;
     }
 
-    getMainConnect = () => {
-        return this._mainConnect
+    getSegments() {
+        return this._pathSegments;
     }
 
-    setOriginalConnects = (args) => {
+    getMainConnect() {
+        return this._mainConnect;
+    }
+
+    setPosition(newPos) { //new therefor untested
+        let difference = newPos.subtract(this._position);
+        this._edges.forEach(edge => {
+            edge.position = edge.position.add(difference);
+        })
+        this._position = newPos;
+    }
+
+    setOriginalConnects(args) {         //necessary?
         if (!this._originalConnects) {
-            this._originalConnects = args
-            return true
+            this._originalConnects = args;
+            return true;
         }
         return false
     }
 
-    rotate = (steps) => {
+    rotate(steps) {
         this._edges.forEach(edge => {
-            edge.rotate(steps)
+            if(edge.position != null) {
+                let positionVector = edge.position.subtract(this._position);
+                positionVector.rotate(45*steps, {x:0,y:0})
+                edge.position = this._position.add(positionVector);
+            }
+            edge.rotate(steps);
         })
     }
 }
 
 class SqrTile extends Tile{
     constructor(edges, pathSegments) {
-        super(edges.slice(0,4), pathSegments)
+        super(edges.slice(0,4), pathSegments);
+        let sideVector = new Point(1,0);
+        edges.forEach(edge => {
+            edge.position = this._position.add(sideVector);
+            sideVector.rotate(90);
+        })
     }
 }
 
 class HexTile extends Tile{
     constructor(edges, pathSegments){
         super(edges.slice(0,6), pathSegments)
+        for(let i = -1; i <= 1; i++) {
+            edges[i+1].position = this._position.add({x: Math.abs(i)/Math.sqrt(2), y: i+i/Math.sqrt(2)});
+            edges[edges.length-i-2].position = this._position.add({x: -Math.abs(i)/Math.sqrt(2), y:i+i/Math.sqrt(2)});
+        }
     }
 }
 
-class Board {
+class Board{
     constructor(edges, pathways) {
-        this._edges = edges
-        this._accessibleEdges = edges.slice()
-        this._pathways = pathways
-        this._pathways.forEach(p => {
-            p.getSegments()[0].boardSort(this)
+        this._edges = edges.slice(0,8);
+        this._position = new Point(0,0);
+        let sideVector = new Point(Math.sqrt(2),0);
+        edges.forEach(edge => {
+            edge.position = this._position.add(sideVector);
+            sideVector.rotate(45);
         })
-        this._unfinishedPathways = pathways
+
+        this._accessibleEdges = this._edges.slice();
+        this._pathways = pathways;
+        this._pathways.forEach(p => {
+            p.getSegments()[0].sort(this);
+        })
+        this._unfinishedPathways = pathways;
     }
 
     getEdges() {
@@ -208,10 +268,17 @@ class Board {
     addTile(tileToAdd, edges) {
         let fits = false
         let tileEdges = tileToAdd.getEdges().slice()
+
+        tileToAdd.setPosition(this._accessibleEdges[edges[0].b].position.add(tileEdges[edges[0].t].position.subtract(tileToAdd.getPosition())))
+
         edges.forEach(edge => {
             if(tileEdges[edge.t].getOrientation() + this._accessibleEdges[edge.b].getOrientation() == 7) fits = true
         })
         if(!fits) return false
+
+        console.log(edges)
+
+
 
         this._edges.push(...tileToAdd.getEdges())
         tileEdges = tileEdges.concat(tileEdges)
@@ -297,7 +364,7 @@ class GTile {
 
         this._pattern = new CompoundPath()
         this._pattern.strokeColor = teamColor.getPathColor()
-        this._pattern.strokeWidth = 4
+        this._pattern.strokeWidth = frameWidth*1.5;
         this._pattern.strokeCap = "round"
         this._pattern.strokeJoin = "round"
 
@@ -354,18 +421,18 @@ class GTile {
     rotate(steps) {
         steps = steps%8
         if(steps < 0) for(let c = 0; c < Math.abs(steps); c++){
-            this._rotateLeft()
+            this._rotateClockwise()
             this._rotation = (this._rotation + 7) % 8
         } else if(steps > 0) for(let c = 0; c < steps; c++) {
-            this._rotateRight()
+            this._rotateAClockwise()
             this._rotation = (this._rotation + 1) % 8
         }
         this._graphics.emit("rotate", steps)
     }
 
-    _rotateLeft() {}
+    _rotateClockwise() {}
 
-    _rotateRight() {}
+    _rotateAClockwise() {}
 
     _initialiseMouseEvents() {
         this._graphics.onMouseEnter = (event) => {
@@ -420,7 +487,7 @@ class GTile {
 
         this._graphics.onMouseWheelFore = (event) => {
             if(this._movable){
-                this._rotateLeft()
+                this._rotateClockwise()
                 this._rotation = (this._rotation + 7) % 8
                 this._graphics.emit("rotate", -1)
             }
@@ -428,7 +495,7 @@ class GTile {
 
         this._graphics.onMouseWheelBack = (event) => {
             if(this._movable){
-                this._rotateRight()
+                this._rotateAClockwise()
                 this._rotation = (this._rotation + 1) % 8
                 this._graphics.emit("rotate",1)
             }
@@ -480,7 +547,7 @@ class GSqrTile extends GTile {
         return this._parentTile
     }
 
-    _rotateRight() {
+    _rotateAClockwise() {
         this._graphics.rotate(45)
         if(this._rotation%2 == 0) {
             this._frameTop.children.unshift(this._frameBot.children.pop())
@@ -488,7 +555,7 @@ class GSqrTile extends GTile {
         }
     }
 
-    _rotateLeft() {
+    _rotateClockwise() {
         this._graphics.rotate(-45)
         if(this._rotation%2 == 1) {
             this._frameTop.children.push(this._frameBot.children.shift())
@@ -569,7 +636,7 @@ class GHexTile extends GTile {
         return this._parentTile
     }
 
-    _rotateLeft() {
+    _rotateClockwise() {
         if(this._rotation%4 != 3) {
             this._frameBot.children.unshift(this._frameTop.children.shift())
             this._frameTop.children.push(this._frameBot.children.pop())
@@ -577,7 +644,7 @@ class GHexTile extends GTile {
         this._graphics.rotate(-45)
     }
 
-    _rotateRight() {
+    _rotateAClockwise() {
         if(this._rotation%4 != 2){
             this._frameTop.children.unshift(this._frameBot.children.shift())
             this._frameBot.children.push(this._frameTop.children.pop())
@@ -750,12 +817,14 @@ class GBoard extends GTile{
             gTile.getEdges().forEach(tEdge => {
                 if(tEdge.intersects(testPath)) {
                     if(Math.round(new Path([tEdge.getConnect(), edge.getConnect()]).length) > frameWidth) {
-                        testPath.fillColor = "rgba(0,255,0,0.25)"
+    
                         if(!invalidEdges.includes(edge)) invalidEdges.push(edge);
-                        let mark = new Path.Rectangle(edge.getConnect(), 10);
-                        mark.bringToFront();
-                        mark.fillColor="green";
-
+                        if(debug){
+                            testPath.fillColor = "rgba(0,255,0,0.25)"
+                            let mark = new Path.Rectangle(edge.getConnect(), 10);
+                            mark.bringToFront();
+                            mark.fillColor="green";
+                        }
                     } else {
                         connectEdges.push(edge);
                     }
@@ -775,12 +844,14 @@ class GBoard extends GTile{
             this._accessibleEdges.forEach(bEdge => {
                 if(bEdge.intersects(testPath)) {
                     if(Math.round(new Path([bEdge.getConnect(), edge.getConnect()]).length) > frameWidth) {
-                        testPath.fillColor = "rgba(255,0,0,0.25)"
+        
                         if(!invalidEdges.includes(edge)) invalidEdges.push(edge);
-                        let mark = new Path.Rectangle(edge.getConnect(), 10);
-                        mark.bringToFront()
-                        mark.fillColor="red";
-
+                        if(debug){
+                            testPath.fillColor = "rgba(255,0,0,0.25)"
+                            let mark = new Path.Rectangle(edge.getConnect(), 10);
+                            mark.bringToFront()
+                            mark.fillColor="red";
+                        }
                     }
                 }
             })
